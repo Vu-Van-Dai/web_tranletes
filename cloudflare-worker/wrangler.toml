@@ -1,0 +1,16 @@
+# Package/image delivery Worker. Deploy on a custom domain route (img.<domain>):
+# the Cache API is inert on *.workers.dev.
+name = "comicplatform-img"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+
+# routes = [{ pattern = "img.example.com", custom_domain = true }]
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "comicplatform-packages"
+
+[vars]
+ORIGIN_URL = "https://api.example.com"
+
+# Secret (not committed): wrangler secret put ORIGIN_SHARED_SECRET

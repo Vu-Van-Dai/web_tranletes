@@ -1,0 +1,25 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Api/">
+    <Project Path="src/Api/ComicPlatform.Api.csproj" />
+  </Folder>
+  <Folder Name="/src/Application/">
+    <Project Path="src/Application/ComicPlatform.Application.csproj" />
+  </Folder>
+  <Folder Name="/src/Domain/">
+    <Project Path="src/Domain/ComicPlatform.Domain.csproj" />
+  </Folder>
+  <Folder Name="/src/Infrastructure/">
+    <Project Path="src/Infrastructure/ComicPlatform.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/IntegrationTests/">
+    <Project Path="tests/IntegrationTests/ComicPlatform.IntegrationTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/LoadTests/">
+    <Project Path="tests/LoadTests/ComicPlatform.LoadTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/UnitTests/">
+    <Project Path="tests/UnitTests/ComicPlatform.UnitTests.csproj" />
+  </Folder>
+</Solution>

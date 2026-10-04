@@ -1,0 +1,140 @@
+@import "tailwindcss";
+@import "@fontsource/be-vietnam-pro/400.css";
+@import "@fontsource/be-vietnam-pro/500.css";
+@import "@fontsource/be-vietnam-pro/600.css";
+@import "@fontsource/be-vietnam-pro/700.css";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ---------------------------------------------------------------
+   "Mực & giấy" design tokens. Body text ≥ 4.5:1 in both themes.
+   --------------------------------------------------------------- */
+:root {
+  --bg: #f6f2ea;
+  --surface: #fffdf8;
+  --surface-2: #f0e9dd;
+  --surface-3: #e7dfd1;
+  --ink: #1d1a17;
+  --muted: #5d564e;
+  --line: #e0d6c6;
+  --accent: #c2361c;
+  --accent-hover: #a82d16;
+  --accent-ink: #ffffff;
+  --accent-soft: #f8e3dc;
+  --success: #0f766e;
+  --success-soft: #d9f0ec;
+  --warn: #9a5b06;
+  --warn-soft: #fbedd3;
+  --danger: #b4231b;
+  --danger-soft: #fbe1df;
+  --focus: #1f6feb;
+  /* Chart series colour, validated (dataviz validator) against the light surface. */
+  --chart-1: #c2361c;
+  --shadow: 0 1px 2px rgb(29 26 23 / 0.06), 0 4px 16px rgb(29 26 23 / 0.06);
+  color-scheme: light;
+}
+
+:root[data-theme="dark"],
+[data-theme="dark"] {
+  --bg: #0e131d;
+  --surface: #151c29;
+  --surface-2: #1c2536;
+  --surface-3: #263146;
+  --ink: #ebe6dd;
+  --muted: #a8a196;
+  --line: #2a3448;
+  --accent: #ee6446;
+  --accent-hover: #ff7a5c;
+  --accent-ink: #1a0b06;
+  --accent-soft: #3a2019;
+  --success: #4fc2b4;
+  --success-soft: #11332f;
+  --warn: #f0b44c;
+  --warn-soft: #3a2c12;
+  --danger: #ff7b70;
+  --danger-soft: #3d1b19;
+  --focus: #6ea8ff;
+  /* Dark step chosen separately (lightness band 0.48–0.67 vs #151c29), not an automatic flip. */
+  --chart-1: #e45a3c;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 20px rgb(0 0 0 / 0.25);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --font-sans: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --shadow-card: var(--shadow);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-bg text-ink font-sans antialiased;
+    min-height: 100dvh;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--accent-soft);
+  }
+
+  dialog::backdrop {
+    background: rgb(10 12 18 / 0.55);
+    backdrop-filter: blur(2px);
+  }
+}
+
+@layer components {
+  .container-page {
+    @apply mx-auto w-full max-w-7xl px-4 sm:px-6;
+  }
+
+  .card {
+    @apply rounded-2xl border border-line bg-surface shadow-card;
+  }
+
+  .skeleton {
+    @apply animate-pulse rounded-lg bg-surface-3;
+  }
+
+  .link {
+    @apply text-accent underline-offset-4 hover:underline;
+  }
+}
+
+/* Reader: hide scrollbars' visual noise without disabling scroll. */
+.reader-scroll {
+  scrollbar-width: thin;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

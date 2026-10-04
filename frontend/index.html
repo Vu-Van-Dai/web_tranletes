@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="vi" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="Đọc truyện tranh do các nhóm dịch Việt Nam thực hiện." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>%PUBLIC_APP_NAME%</title>
+    <script>
+      // Apply the saved theme before first paint (no flash).
+      try {
+        var t = localStorage.getItem('theme');
+        if (t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.dataset.theme = 'dark';
+        }
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

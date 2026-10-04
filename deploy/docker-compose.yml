@@ -1,0 +1,65 @@
+# Production stack on the Oracle A1 host: backend + PostgreSQL only.
+#   cd deploy && docker compose --env-file ../.env up -d --build
+# PostgreSQL is attached ONLY to an internal network and never publishes a port.
+name: comicplatform
+
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-comicplatform}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      POSTGRES_DB: ${DB_NAME:-comicplatform}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale-provider=icu --icu-locale=vi-VN"
+    # Tuned for a 12 GB / 2 OCPU host shared with the API.
+    command: >
+      postgres -c shared_buffers=1GB -c effective_cache_size=4GB -c work_mem=16MB
+               -c maintenance_work_mem=256MB -c max_connections=60 -c random_page_cost=1.1
+               -c wal_compression=on -c checkpoint_completion_target=0.9
+    volumes:
+      # postgres:18 images keep PGDATA under /var/lib/postgresql/18/docker
+      - ${DATA_ROOT:-/data}/postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-comicplatform} -d ${DB_NAME:-comicplatform}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+    shm_size: 256mb
+
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    image: comicplatform-api:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: ${ENV_FILE:-../.env}
+    environment:
+      DATABASE_CONNECTION_STRING: Host=postgres;Database=${DB_NAME:-comicplatform};Username=${DB_USER:-comicplatform};Password=${DB_PASSWORD};Maximum Pool Size=30
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      COMIC_STORAGE_PATH: /data/comics
+      TEMP_STORAGE_PATH: /data/tmp
+      LOG_DIRECTORY: /data/logs
+      # HTTPS with a Cloudflare Origin CA certificate (Full (strict) SSL):
+      #   API_HTTPS_URL=;https://+:8443  TLS_CERT_PATH=/certs/origin.pem  TLS_KEY_PATH=/certs/origin.key
+      # Leave them empty for HTTP only (e.g. behind a Cloudflare Tunnel).
+      ASPNETCORE_URLS: http://+:8080${API_HTTPS_URL:-}
+      ASPNETCORE_Kestrel__Certificates__Default__Path: ${TLS_CERT_PATH:-}
+      ASPNETCORE_Kestrel__Certificates__Default__KeyPath: ${TLS_KEY_PATH:-}
+    volumes:
+      - ${DATA_ROOT:-/data}/app:/data
+      - ./certs:/certs:ro
+    ports:
+      - "${API_HTTPS_BIND:-443}:8443"
+      - "127.0.0.1:${API_HTTP_BIND:-8080}:8080"   # loopback only: health checks / SSH tunnel
+    networks: [internal, edge]
+    stop_grace_period: 30s
+
+networks:
+  internal:
+    internal: true   # no route outside the host; only backend <-> postgres
+  edge: {}
