@@ -8,9 +8,13 @@ compatibility_date = "2026-09-01"
 
 [[r2_buckets]]
 binding = "BUCKET"
-bucket_name = "comicplatform-packages"
+bucket_name = "kho-truyen-cache"
 
 [vars]
-ORIGIN_URL = "https://api.example.com"
+ORIGIN_URL = "https://api.rongnho.shop"
+
+[[routes]]
+pattern = "img.rongnho.shop"
+custom_domain = true
 
 # Secret (not committed): wrangler secret put ORIGIN_SHARED_SECRET
