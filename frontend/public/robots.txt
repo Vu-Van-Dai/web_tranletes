@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /quan-tri/
+Disallow: /quan-ly-nhom/
+Disallow: /dang-nhap
+Disallow: /dang-ky
+Disallow: /doi-mat-khau
+Disallow: /tu-truyen
+
+Sitemap: https://rongnho.shop/sitemap.xml
