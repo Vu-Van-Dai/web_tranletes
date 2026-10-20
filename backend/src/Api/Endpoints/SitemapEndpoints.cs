@@ -27,12 +27,12 @@ public static class SitemapEndpoints
                     && c.TranslationHouse.Status == HouseStatus.Active)
                 .OrderByDescending(c => c.LastChapterPublishedAt)
                 .Select(c => new { c.Id, c.Slug, c.LastChapterPublishedAt, c.UpdatedAt })
-                .Take(50000)
+                .Take(49997)
                 .ToListAsync(ct);
 
             using var stream = new MemoryStream();
             var settings = new XmlWriterSettings { Async = true, Encoding = new UTF8Encoding(false), Indent = true };
-            await using (var writer = XmlWriter.Create(stream, settings))
+            using (var writer = XmlWriter.Create(stream, settings))
             {
                 await writer.WriteStartDocumentAsync();
                 await writer.WriteStartElementAsync(null, "urlset", "http://www.sitemaps.org/schemas/sitemap/0.9");
