@@ -149,6 +149,7 @@ api.MapLibraryEndpoints();
 api.MapHouseEndpoints();
 api.MapAdminEndpoints();
 app.MapObjectEndpoints(settings.Storage);
+app.MapSitemapEndpoints();
 
 await app.Services.GetRequiredService<DatabaseInitializer>().InitializeAsync(app.Lifetime.ApplicationStopping);
 
