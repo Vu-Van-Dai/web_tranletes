@@ -1,5 +1,6 @@
 using System.Text;
 using System.Xml;
+using ComicPlatform.Api.Infrastructure;
 using ComicPlatform.Application.Abstractions;
 using ComicPlatform.Application.Catalog;
 using ComicPlatform.Domain.Catalog;
