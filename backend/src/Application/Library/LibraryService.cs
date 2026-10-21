@@ -70,7 +70,7 @@ public sealed class LibraryService(IAppDbContext db, PublicCatalogService catalo
             throw Errors.Field("chapterId", "Thiếu chương đang đọc.");
         }
 
-        var comicId = await catalog.VisibleChapterComicIdAsync(request.ChapterId.Value, ct) ?? throw Errors.NotFound("Chương");
+        var comicId = (await catalog.VisibleChapterInfoAsync(request.ChapterId.Value, ct) ?? throw Errors.NotFound("Chương")).ComicId;
         var page = Math.Clamp(request.Page ?? 1, 1, 10_000);
         var now = clock.GetUtcNow();
         var existing = await db.ReadingProgress.FirstOrDefaultAsync(p => p.UserId == userId && p.ComicId == comicId, ct);
@@ -133,52 +133,5 @@ public sealed class LibraryService(IAppDbContext db, PublicCatalogService catalo
             .Select(x => x.ComicId)
             .ToListAsync(ct);
         return (await catalog.CardsByIdsAsync(ids, ct)).Take(10).ToList();
-    }
-}
-
-/// <summary>
-/// In-memory view aggregation (no per-view DB writes). A background service flushes the counts in
-/// batches. Repeated views of the same chapter from the same client within 30 minutes count once.
-/// Counts are approximate by design (lost on crash).
-/// </summary>
-public sealed class ViewCounter(TimeProvider clock)
-{
-    private static readonly TimeSpan DedupeWindow = TimeSpan.FromMinutes(30);
-    private const int MaxDedupeEntries = 200_000;
-
-    private ConcurrentDictionary<(Guid ComicId, DateOnly Day), long> _counts = new();
-    private readonly ConcurrentDictionary<string, DateTimeOffset> _recent = new(StringComparer.Ordinal);
-
-    public void Record(Guid comicId, Guid chapterId, string clientKey)
-    {
-        var now = clock.GetUtcNow();
-        var dedupeKey = clientKey + "|" + chapterId.ToString("N");
-        if (_recent.TryGetValue(dedupeKey, out var seen) && now - seen < DedupeWindow)
-        {
-            return;
-        }
-
-        if (_recent.Count < MaxDedupeEntries)
-        {
-            _recent[dedupeKey] = now;
-        }
-
-        _counts.AddOrUpdate((comicId, DateOnly.FromDateTime(now.UtcDateTime)), 1, (_, v) => v + 1);
-    }
-
-    /// <summary>Swaps out the pending counts and prunes the dedupe table.</summary>
-    public IReadOnlyDictionary<(Guid ComicId, DateOnly Day), long> Drain()
-    {
-        var drained = Interlocked.Exchange(ref _counts, new ConcurrentDictionary<(Guid, DateOnly), long>());
-        var cutoff = clock.GetUtcNow() - DedupeWindow;
-        foreach (var (key, at) in _recent)
-        {
-            if (at < cutoff)
-            {
-                _recent.TryRemove(key, out _);
-            }
-        }
-
-        return drained;
     }
 }

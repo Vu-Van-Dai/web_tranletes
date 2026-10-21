@@ -13,7 +13,7 @@ public class PublishingFlowTests(ApiFactory factory) : IClassFixture<ApiFactory>
     private async Task<ApiClient> OwnerAsync() =>
         (await _s.CreateHouseAsync(await _s.AdminAsync(), "Nhóm " + Guid.NewGuid().ToString("N")[..6], "chu_" + Guid.NewGuid().ToString("N")[..8])).Owner;
 
-    private static async Task<(byte[] Bytes, HttpResponseMessage Response)> DownloadAsync(ApiClient client, string url)
+    internal static async Task<(byte[] Bytes, HttpResponseMessage Response)> DownloadAsync(ApiClient client, string url)
     {
         var response = await client.SendAsync(HttpMethod.Get, url);
         return (await response.Content.ReadAsByteArrayAsync(), response);

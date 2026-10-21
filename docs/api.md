@@ -8,7 +8,7 @@ House endpoints accept an optional `X-House-Id` header that **selects among the 
 ## Public (anonymous)
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/site` | registration flag, announcement |
+| GET | `/site` | registration flag, announcement, `ads` (enabled ad units only) |
 | GET | `/comics?q&tag&house&status&sort=updated\|new\|az\|chapters&page&pageSize≤48` | visible comics; diacritic-insensitive search |
 | GET | `/comics/{id}` | detail, tags, first/latest chapter |
 | GET | `/comics/{id}/chapters` | published chapters |
@@ -16,7 +16,8 @@ House endpoints accept an optional `X-House-Id` header that **selects among the 
 | GET | `/chapters/{id}/reader` | package `{url, version, size, sha256, pageCount, format}`, pages `[{n,w,h}]`, prev/next |
 | GET | `/tags`, `/houses`, `/houses/{slug}` | genres with counts, public house pages |
 | GET | `/rankings?period=day\|week\|month` | most viewed |
-| POST | `/chapters/{id}/view` | view beacon (deduplicated, batched) |
+| POST | `/chapters/{id}/view-ticket` | `{humanToken?}` → signed single-use `{ticket, minSeconds, minPages}` (no-store) |
+| POST | `/chapters/{id}/view` | `{ticket, pagesSeen, activeSeconds}` → always 204; counted only if verified (see [monetization](monetization.md)) |
 
 ## Auth
 | Method | Path | Notes |
@@ -42,13 +43,17 @@ House endpoints accept an optional `X-House-Id` header that **selects among the 
 | GET | `/admin/translation-houses/{id}/comics` (metadata only, no pages) |
 | GET | `/admin/users` · POST `/admin/users/{id}/disable` · `/enable` · `/reset-password` |
 | GET | `/admin/stats` · `/admin/audit-logs?action&houseId` · `/admin/system` |
-| GET, PUT | `/admin/settings` |
+| GET, PUT | `/admin/settings` (incl. `revenuePerThousandViews`) |
+| GET | `/admin/revenue?from&to` (per house: verified views, suspicious views, revenue; rejection reasons) · `/admin/revenue/houses/{id}?from&to` |
+| GET, PUT | `/admin/ads` (whole ads config) · POST `/admin/ads/images` (multipart → WebP, returns `{url}`) |
 
 ## Translation house (house context required; permission per endpoint)
 | Method | Path | Permission |
 |---|---|---|
 | GET / PUT | `/translation-house/profile` | any / `manageProfile` |
 | PUT | `/translation-house/profile/logo` (multipart image) | `manageProfile` |
+| PUT / DELETE | `/translation-house/profile/cover` (multipart image → WebP ≤ 1640×624) | `manageProfile` |
+| GET | `/translation-house/stats/views?from&to` (series = sum of chapters; revenue only for owners) | any member |
 | GET | `/translation-house/dashboard`, `/translation-house/processing` | any member |
 | GET | `/translation-house/members` | `viewMembers` |
 | POST, PUT, DELETE | `/translation-house/members[/{id}]` | `manageMembers` |
@@ -56,7 +61,7 @@ House endpoints accept an optional `X-House-Id` header that **selects among the 
 | POST, PUT, DELETE | `/translation-house/comics[/{id}]`, PUT `/comics/{id}/cover` | `manageComics` |
 | GET | `/translation-house/comics/{id}/chapters`, `/chapters/{id}`, `/chapters/{id}/processing` | any member |
 | POST, PUT, DELETE | `/translation-house/comics/{id}/chapters`, `/chapters/{id}` | `manageChapters` |
-| POST | `/translation-house/chapters/{id}/upload` (multipart .zip/.cbz) → 202 | `uploadChapters` |
+| POST | `/translation-house/chapters/{id}/upload` (multipart: optional `promoStart`/`promoEnd` images — max 2 — **before** the `file` .zip/.cbz part) → 202 | `uploadChapters` |
 | POST | `/translation-house/chapters/{id}/retry` | `uploadChapters` |
 | GET | `/translation-house/upload-limits` (limits the browser uses for the pre-upload check) | any member |
 | GET | `/translation-house/chapters/{id}/versions/{v}/preview` → pages `[{n,w,h,size,sourceName}]`, sha256, `canPublish` (ready/published versions only) | any member |

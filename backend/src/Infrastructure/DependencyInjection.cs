@@ -1,3 +1,4 @@
+using ComicPlatform.Application.Analytics;
 using ComicPlatform.Application.Abstractions;
 using ComicPlatform.Application.Publishing;
 using ComicPlatform.Infrastructure.Configuration;
@@ -31,6 +32,18 @@ public static class DependencyInjection
             MaxUploadSize = settings.Limits.MaxUploadSize,
             PublishUploadTimeout = settings.Processing.PublishUploadTimeout,
         });
+        services.AddSingleton(settings.Views);
+        services.AddSingleton(new ViewOptions
+        {
+            // Stable across restarts (visitor hashes must match within a day); separate from the JWT key by derivation.
+            Secret = System.Security.Cryptography.HMACSHA256.HashData(settings.Jwt.SigningKeyBytes, "comicplatform-views"u8),
+            SecondsPerPage = settings.Views.SecondsPerPage,
+            MinSeconds = settings.Views.MinSeconds,
+            MaxSeconds = Math.Max(settings.Views.MinSeconds, settings.Views.MaxSeconds),
+            MinPageFraction = Math.Clamp(settings.Views.MinPageFraction, 0, 1),
+            MaxViewsPerVisitorPerHour = settings.Views.MaxViewsPerVisitorPerHour,
+            MaxViewsPerIpPerHour = settings.Views.MaxViewsPerIpPerHour,
+        });
         services.AddSingleton(TimeProvider.System);
 
         // Database: one pooled data source shared by EF Core and raw Npgsql (advisory locks, health, batch upserts).
@@ -61,6 +74,15 @@ public static class DependencyInjection
         services.AddSingleton<IChapterFiles, ChapterFiles>();
         services.AddHttpClient("cloudflare", c => c.Timeout = TimeSpan.FromSeconds(15));
         services.AddSingleton<ICdnPurger, CloudflareCdnPurger>();
+        if (string.IsNullOrWhiteSpace(settings.Views.TurnstileSecretKey))
+        {
+            services.AddSingleton<IHumanVerifier, NoHumanVerifier>();
+        }
+        else
+        {
+            services.AddHttpClient("turnstile", c => c.Timeout = TimeSpan.FromSeconds(10));
+            services.AddSingleton<IHumanVerifier, TurnstileVerifier>();
+        }
         if (settings.Storage.IsLocalStore)
         {
             services.AddSingleton<LocalObjectStore>();

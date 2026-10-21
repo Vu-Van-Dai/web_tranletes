@@ -14,6 +14,7 @@ public sealed class ApiClient(HttpClient http)
     public Guid? HouseId { get; set; }
     public Guid UserId { get; set; }
     public string Username { get; set; } = "";
+    public string UserAgent { get; set; } = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36";
 
     public async Task<HttpResponseMessage> SendAsync(HttpMethod method, string url, object? body = null, Action<HttpRequestMessage>? configure = null)
     {
@@ -42,6 +43,8 @@ public sealed class ApiClient(HttpClient http)
             request.Headers.Add("Cookie", $"cp_rt={RefreshCookie}");
         }
 
+        // Like a browser: the view verification treats requests without a real user agent as bots.
+        request.Headers.TryAddWithoutValidation("User-Agent", UserAgent);
         configure?.Invoke(request);
         var response = await Http.SendAsync(request);
         CaptureRefreshCookie(response);

@@ -156,8 +156,11 @@ public sealed class PublicCatalogService(IAppDbContext db, IPublicUrls urls)
         var normalized = slug.Trim().ToLowerInvariant();
         var house = await db.TranslationHouses.AsNoTracking().FirstOrDefaultAsync(h => h.Slug == normalized && h.Status == HouseStatus.Active, ct)
                     ?? throw Errors.NotFound("Nhóm dịch");
-        var count = await VisibleComics.CountAsync(c => c.TranslationHouseId == house.Id, ct);
-        return MapHouse(house, count);
+        var stats = await VisibleComics.Where(c => c.TranslationHouseId == house.Id)
+            .GroupBy(_ => 1)
+            .Select(g => new { Comics = g.Count(), Chapters = g.Sum(c => c.PublishedChapterCount) })
+            .FirstOrDefaultAsync(ct);
+        return MapHouse(house, stats?.Comics ?? 0, stats?.Chapters ?? 0);
     }
 
     /// <summary>Visible comic cards for the given ids, preserving the given order (invisible ids are skipped).</summary>
@@ -174,8 +177,11 @@ public sealed class PublicCatalogService(IAppDbContext db, IPublicUrls urls)
     }
 
     /// <summary>Comic id of a publicly visible chapter, or null.</summary>
-    public Task<Guid?> VisibleChapterComicIdAsync(Guid chapterId, CancellationToken ct) =>
-        VisibleChapters.Where(ch => ch.Id == chapterId).Select(ch => (Guid?)ch.ComicId).FirstOrDefaultAsync(ct);
+    /// <summary>Owner chain and page count of a published, visible chapter (null otherwise) — used by view verification.</summary>
+    public Task<VisibleChapterInfo?> VisibleChapterInfoAsync(Guid chapterId, CancellationToken ct) =>
+        VisibleChapters.Where(ch => ch.Id == chapterId)
+            .Select(ch => new VisibleChapterInfo(ch.Id, ch.ComicId, ch.Comic!.TranslationHouseId, ch.PageCount))
+            .FirstOrDefaultAsync(ct);
 
     public Task<bool> IsComicVisibleAsync(Guid comicId, CancellationToken ct) => VisibleComics.AnyAsync(c => c.Id == comicId, ct);
 
@@ -203,9 +209,10 @@ public sealed class PublicCatalogService(IAppDbContext db, IPublicUrls urls)
         new HouseRef(r.HouseId, r.HouseName, r.HouseSlug, urls.ObjectUrl(r.HouseLogoKey)), r.ChapterCount, r.LastChapterPublishedAt,
         r.Latest.Select(l => new ChapterRef(l.Id, ApiText.ChapterNumber(l.Number), l.Title, l.PublishedAt)).ToList());
 
-    private PublicHouseDto MapHouse(TranslationHouse h, int count) => new(
+    private PublicHouseDto MapHouse(TranslationHouse h, int count, int chapterCount = 0) => new(
         h.Id, h.Name, h.Slug, h.Description, urls.ObjectUrl(h.LogoKey), count,
-        new HouseLinksDto(h.Links.Facebook, h.Links.Discord, h.Links.Website), h.CreatedAt);
+        HouseLinksDto.From(h.Links), h.CreatedAt, urls.ObjectUrl(h.CoverKey), h.Tagline, h.ContactEmail, h.FoundedYear, h.Recruiting, h.RecruitmentInfo,
+        chapterCount);
 
     private async Task<(ChapterSummaryDto Summary, Guid PackageId)> LoadChapterAsync(Guid chapterId, CancellationToken ct)
     {

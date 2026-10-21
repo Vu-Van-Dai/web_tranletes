@@ -1,8 +1,10 @@
 using ComicPlatform.Api.Infrastructure;
 using ComicPlatform.Application.Abstractions;
+using ComicPlatform.Application.Analytics;
 using ComicPlatform.Application.Catalog;
 using ComicPlatform.Application.Publishing;
 using ComicPlatform.Application.Tenancy;
+using ComicPlatform.Domain.Publishing;
 using ComicPlatform.Domain.Tenancy;
 using ComicPlatform.Infrastructure.Configuration;
 
@@ -24,6 +26,11 @@ public static class HouseEndpoints
             Results.Ok(await s.UpdateAsync(request, ct))).RequirePermission(HousePermissions.ManageProfile);
         house.MapPut("/profile/logo", async (HttpContext http, HouseProfileService s, LimitSettings limits, CancellationToken ct) =>
             Results.Ok(await MultipartUpload.ReadFirstFileAsync(http, limits.MaxCoverSize, (stream, _) => s.SetLogoAsync(stream, ct), ct)))
+            .RequirePermission(HousePermissions.ManageProfile);
+        house.MapPut("/profile/cover", async (HttpContext http, HouseProfileService s, LimitSettings limits, CancellationToken ct) =>
+            Results.Ok(await MultipartUpload.ReadFirstFileAsync(http, limits.MaxCoverSize, (stream, _) => s.SetCoverAsync(stream, ct), ct)))
+            .RequirePermission(HousePermissions.ManageProfile);
+        house.MapDelete("/profile/cover", async (HouseProfileService s, CancellationToken ct) => Results.Ok(await s.RemoveCoverAsync(ct)))
             .RequirePermission(HousePermissions.ManageProfile);
         house.MapGet("/dashboard", async (HouseChapterService s, CancellationToken ct) => Results.Ok(await s.DashboardAsync(ct)));
         // Lets the browser check an archive against the same limits before uploading it.
@@ -91,11 +98,29 @@ public static class HouseEndpoints
         house.MapGet("/chapters/{id:guid}/processing", async (Guid id, HouseChapterService s, CancellationToken ct) =>
             Results.Ok(await s.GetLatestJobAsync(id, ct)));
 
-        house.MapPost("/chapters/{id:guid}/upload", async (Guid id, HttpContext http, PublishingService s, PublishingOptions options, CancellationToken ct) =>
+        // Optional promotional images ("promoStart"/"promoEnd", at most 2) precede the archive part ("file").
+        house.MapPost("/chapters/{id:guid}/upload", async (Guid id, HttpContext http, PublishingService s, PublishingOptions options, LimitSettings limits, CancellationToken ct) =>
         {
             s.EnsureQueueAccepting();
-            var job = await MultipartUpload.ReadFirstFileAsync(http, options.MaxUploadSize, (stream, fileName) => s.AcceptUploadAsync(id, stream, fileName, ct), ct);
-            return Results.Accepted($"/api/translation-house/chapters/{id}/processing", job);
+            var uploadId = Guid.CreateVersion7();
+            var extras = new List<ExtraPageFile>();
+            var handedOver = false;
+            try
+            {
+                var job = await MultipartUpload.ReadChapterUploadAsync(http, options.MaxUploadSize, limits.MaxCoverSize, ExtraPageFile.MaxPerUpload, PublishingService.ExtraPageFields,
+                    async (field, stream, fileName, index) => extras.Add(await s.SaveExtraPageAsync(uploadId, index, field, stream, fileName, limits.MaxCoverSize, ct)),
+                    (stream, fileName) =>
+                    {
+                        handedOver = true; // AcceptUploadAsync owns the extra files from here on.
+                        return s.AcceptUploadAsync(id, stream, fileName, extras, ct);
+                    }, ct);
+                return Results.Accepted($"/api/translation-house/chapters/{id}/processing", job);
+            }
+            catch when (!handedOver)
+            {
+                s.DiscardExtraPages(extras);
+                throw;
+            }
         })
         .RequirePermission(HousePermissions.UploadChapters)
         .RequireRateLimiting(RateLimitPolicies.Upload)
@@ -117,6 +142,10 @@ public static class HouseEndpoints
             .RequirePermission(HousePermissions.PublishChapters);
         house.MapPost("/chapters/{id:guid}/retry", async (Guid id, PublishingService s, CancellationToken ct) => Results.Ok(await s.RetryAsync(id, ct)))
             .RequirePermission(HousePermissions.UploadChapters);
+
+        // Verified views of the house's chapters (series = sum of chapters); revenue is shown to owners only.
+        house.MapGet("/stats/views", async (DateOnly? from, DateOnly? to, ViewReportService s, CancellationToken ct) =>
+            Results.Ok(await s.HouseReportAsync(from, to, ct)));
 
         house.MapGet("/processing", async (int? take, HouseChapterService s, CancellationToken ct) => Results.Ok(await s.ListRecentJobsAsync(take ?? 50, ct)));
 

@@ -34,6 +34,9 @@ public interface IAppDbContext
     DbSet<Follow> Follows { get; }
     DbSet<ReadingProgress> ReadingProgress { get; }
     DbSet<ComicViewDaily> ComicViewDaily { get; }
+    DbSet<Domain.Analytics.ChapterViewDaily> ChapterViewDaily { get; }
+    DbSet<Domain.Analytics.ViewReceipt> ViewReceipts { get; }
+    DbSet<Domain.Analytics.ViewRejectionDaily> ViewRejectionDaily { get; }
 
     DatabaseFacade Database { get; }
 

@@ -19,6 +19,7 @@ public sealed class PlatformSettings
     public R2Settings R2 { get; init; } = new();
     public CloudflareSettings Cloudflare { get; init; } = new();
     public WebSettings Web { get; init; } = new();
+    public ViewSettings Views { get; init; } = new();
 
     public static PlatformSettings FromConfiguration(IConfiguration c)
     {
@@ -104,6 +105,16 @@ public sealed class PlatformSettings
                 MigrateOnStartup = Bool(c, "DATABASE_MIGRATE_ON_STARTUP", true),
                 LogDirectory = c["LOG_DIRECTORY"],
             },
+            Views = new ViewSettings
+            {
+                SecondsPerPage = Dbl(c, "VIEW_SECONDS_PER_PAGE", 1.5),
+                MinSeconds = Int(c, "VIEW_MIN_SECONDS", 10),
+                MaxSeconds = Int(c, "VIEW_MAX_SECONDS", 60),
+                MinPageFraction = Dbl(c, "VIEW_MIN_PAGE_FRACTION", 0.5),
+                MaxViewsPerVisitorPerHour = Int(c, "VIEW_MAX_PER_VISITOR_HOUR", 60),
+                MaxViewsPerIpPerHour = Int(c, "VIEW_MAX_PER_IP_HOUR", 300),
+                TurnstileSecretKey = c["TURNSTILE_SECRET_KEY"] ?? "",
+            },
         };
     }
 
@@ -171,6 +182,9 @@ public sealed class PlatformSettings
 
     private static string Str(IConfiguration c, string key, string fallback) =>
         string.IsNullOrWhiteSpace(c[key]) ? fallback : c[key]!.Trim();
+
+    private static double Dbl(IConfiguration c, string key, double fallback) =>
+        double.TryParse(c[key], NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : fallback;
 
     private static int Int(IConfiguration c, string key, int fallback) =>
         int.TryParse(c[key], NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) ? v : fallback;
@@ -313,6 +327,20 @@ public sealed class CloudflareSettings
     public string ApiToken { get; init; } = "";
 
     public bool PurgeEnabled => !string.IsNullOrWhiteSpace(ZoneId) && !string.IsNullOrWhiteSpace(ApiToken);
+}
+
+/// <summary>Verified-view rules (anti-inflation) — see Application.Analytics.ViewTicketService.</summary>
+public sealed class ViewSettings
+{
+    public double SecondsPerPage { get; init; } = 1.5;
+    public int MinSeconds { get; init; } = 10;
+    public int MaxSeconds { get; init; } = 60;
+    public double MinPageFraction { get; init; } = 0.5;
+    public int MaxViewsPerVisitorPerHour { get; init; } = 60;
+    public int MaxViewsPerIpPerHour { get; init; } = 300;
+
+    /// <summary>When set, a Cloudflare Turnstile token is required before a view ticket is issued.</summary>
+    public string TurnstileSecretKey { get; init; } = "";
 }
 
 public sealed class WebSettings

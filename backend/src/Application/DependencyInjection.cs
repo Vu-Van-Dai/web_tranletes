@@ -1,3 +1,4 @@
+using ComicPlatform.Application.Analytics;
 using ComicPlatform.Application.Admin;
 using ComicPlatform.Application.Auditing;
 using ComicPlatform.Application.Catalog;
@@ -37,10 +38,14 @@ public static class DependencyInjection
         services.AddScoped<AdminHouseService>();
         services.AddScoped<AdminUserService>();
         services.AddScoped<AdminStatsService>();
+        services.AddScoped<AdsService>();
 
         // Reader library (follows, history, views)
         services.AddScoped<LibraryService>();
         services.AddSingleton<ViewCounter>();
+        services.AddSingleton<ViewTicketService>();
+        services.AddScoped<ViewService>();
+        services.AddScoped<ViewReportService>();
         return services;
     }
 }

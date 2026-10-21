@@ -9,6 +9,7 @@ import { houseApi } from '@/services/api';
 import { useDocumentTitle } from '@/hooks/useTheme';
 import { chapterLabel, formatBytes, formatDateTime, timeAgo } from '@/utils/format';
 import { ChapterStatusBadge, isActiveJob, JobProgress, JobStatusBadge } from './shared';
+import { PromoImagesPicker, promoParts, usePromos } from './PromoImages';
 import { UploadCheckDialog } from './UploadCheckDialog';
 
 export function HouseChapterPage() {
@@ -32,6 +33,7 @@ export function HouseChapterPage() {
   const [confirm, setConfirm] = useState<'publish' | 'unpublish' | 'delete' | null>(null);
   const [editing, setEditing] = useState(false);
   const abort = useRef<AbortController | null>(null);
+  const promos = usePromos();
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: key });
     queryClient.invalidateQueries({ queryKey: ['house', currentHouse?.houseId, 'comic', c?.comicId] });
@@ -41,7 +43,7 @@ export function HouseChapterPage() {
     abort.current = new AbortController();
     setUploadProgress(0);
     try {
-      await houseApi.upload(id, file, setUploadProgress, abort.current.signal);
+      await houseApi.upload(id, file, setUploadProgress, abort.current.signal, promoParts(promos));
       toast.success('Đã tải lên. Hệ thống đang xử lý chương…');
       refresh();
     } catch (e) {
@@ -118,9 +120,12 @@ export function HouseChapterPage() {
                 <Button variant="outline" size="sm" onClick={() => abort.current?.abort()}>Huỷ tải lên</Button>
               </div>
             ) : (
+              <>
+              <PromoImagesPicker disabled={!c.actions.canUpload} />
               <Dropzone accept=".zip,.cbz,application/zip" maxBytes={limits.data?.maxUploadSize ?? 200 * 1024 * 1024} disabled={!c.actions.canUpload || !limits.data} onFile={setChecking}
                 title={c.actions.canUpload ? 'Kéo thả hoặc bấm để chọn tệp ZIP/CBZ' : 'Đang xử lý bản tải lên trước…'}
                 hint={c.status === 'published' ? 'Tải lại sẽ tạo phiên bản mới; bản đang đăng vẫn hiển thị đến khi bạn đăng bản mới.' : 'Ảnh JPEG/PNG/WebP, tối đa 200 MB.'} />
+              </>
             )
           ) : (
             <p className="text-sm text-muted">Bạn chưa được giao quyền tải chương lên.</p>
@@ -196,6 +201,7 @@ export function HouseChapterPage() {
         <UploadCheckDialog
           file={checking}
           limits={limits.data}
+          promos={promos}
           onCancel={() => setChecking(null)}
           onConfirm={() => {
             const file = checking;

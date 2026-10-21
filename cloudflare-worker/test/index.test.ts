@@ -47,6 +47,9 @@ describe('parseKey', () => {
     expect(parseKey('/' + PKG)).toBe(PKG);
     expect(parseKey('/' + COVER)).toBe(COVER);
     expect(parseKey(`/houses/${COMIC}/logo/0123456789abcdef.webp`)).not.toBeNull();
+    expect(parseKey(`/houses/${COMIC}/cover/0123456789abcdef.webp`)).not.toBeNull();
+    expect(parseKey(`/ads/0123456789abcdef.webp`)).not.toBeNull();
+    expect(parseKey(`/ads/../0123456789abcdef.webp`)).toBeNull();
     for (const bad of [
       '/comics/../../etc/passwd',
       `/comics/${COMIC}/chapters/${CHAPTER}/v0.pkg`,

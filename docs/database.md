@@ -18,18 +18,21 @@ storage_tasks (outbox) · audit_logs · system_settings
 |---|---|---|
 | `users` | id, username, normalized_username, email, normalized_email, display_name, password_hash (Argon2id PHC), system_role (`User`/`SystemAdmin`), status, must_change_password, failed_login_count, lockout_until, last_login_at, created_at, updated_at, xmin | unique normalized_username, unique normalized_email |
 | `refresh_tokens` | id, user_id, family_id, token_hash (SHA-256), expires_at, created_at, revoked_at, revoke_reason, replaced_by_id | unique token_hash; user_id; family_id |
-| `translation_houses` | id, name, slug, description, logo_key, links (jsonb), status (`Active`/`Suspended`), suspended_reason, created_at, updated_at, xmin | unique slug, unique name |
+| `translation_houses` | id, name, slug, description, logo_key, cover_key, tagline, contact_email, founded_year, recruiting, recruitment_info, links (jsonb: facebook, discord, website, tiktok, youtube, donate), status (`Active`/`Suspended`), suspended_reason, created_at, updated_at, xmin | unique slug, unique name |
 | `translation_house_members` | id, translation_house_id, user_id, role (`Owner`/`Staff`), permissions (int flags), status, joined_at, updated_at, xmin | unique (house, user); user_id |
 | `comics` | id, translation_house_id, original_title, translated_title, slug, description, author, artist, cover_key, status, is_mature, search_key, published_chapter_count, last_chapter_published_at, created_at, updated_at, deleted_at, xmin | unique (house, slug) where not deleted; GIN trigram on search_key; last_chapter_published_at |
 | `tags`, `comic_tags` | id, name, slug / (comic_id, tag_id) | unique slug, unique name |
 | `chapters` | id, comic_id, chapter_number numeric(8,2), title, status, published_package_id, latest_package_version, page_count, published_at, created_at, updated_at, xmin | unique (comic, chapter_number); (comic, status) |
 | `chapter_packages` | id, chapter_id, version, storage_key, format_version, file_size, page_count, checksum (SHA-256 hex), status (`Building`/`Ready`/`Published`/`Failed`/`Superseded`), created_at, published_at | unique (chapter, version) |
 | `chapter_pages` | id, package_id, chapter_id, page_number, file_name, width, height, file_size, storage_path | unique (package, page_number) |
-| `processing_jobs` | id, chapter_id, package_id, requested_by_user_id, status, stage, progress_done, progress_total, attempts, error_code, error_message (vi), upload_path, upload_size, original_file_name, created_at, started_at, heartbeat_at, finished_at | (status, created_at); chapter_id |
+| `processing_jobs` | id, chapter_id, package_id, requested_by_user_id, status, stage, progress_done, progress_total, attempts, error_code, error_message (vi), upload_path, upload_size, original_file_name, extra_pages (jsonb: promotional images `{path, position, fileName, size}`), created_at, started_at, heartbeat_at, finished_at | (status, created_at); chapter_id |
 | `storage_tasks` | id, kind (`DeleteObject`/`PurgeUrl`), key, package_id, attempts, next_attempt_at, last_error, created_at | next_attempt_at |
 | `audit_logs` | id, at, actor_user_id, action, target_type, target_id, translation_house_id, ip, data (jsonb), success | at; (house, at); (actor, at); action |
 | `system_settings` | key, value (jsonb), updated_at, updated_by | whitelisted keys |
-| `follows`, `reading_progress`, `comic_view_daily` | reader library and batched view counters | composite PKs |
+| `follows`, `reading_progress`, `comic_view_daily` | reader library and batched view counters (rankings, verified views only) | composite PKs |
+| `chapter_view_daily` | chapter_id, day (Vietnam time), comic_id, translation_house_id, views, suspicious_views, revenue numeric(18,4) — **payout ledger, no FKs** so history survives deletions | PK (chapter, day); (house, day); (comic, day); day |
+| `view_receipts` | chapter_id, day, visitor_hash (keyed, daily salt) — one counted view per visitor/chapter/day, pruned after 2 days | PK (chapter, day, visitor_hash); day |
+| `view_rejection_daily` | day, reason, count — fraud monitoring | PK (day, reason) |
 
 **Tenant integrity.** Only `comics` carries `translation_house_id`; chapters, packages, pages and jobs reach the house
 through their parent chain (single path → no redundant column that could disagree). The EF Core "Tenant" filter

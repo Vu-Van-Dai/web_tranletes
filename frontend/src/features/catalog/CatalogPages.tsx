@@ -7,6 +7,8 @@ import { EmptyState, ErrorState, Pagination, Select, Skeleton, Tabs, ButtonLink 
 import { publicApi } from '@/services/api';
 import { useDocumentTitle } from '@/hooks/useTheme';
 import { comicStatusLabel, sortOptions } from '@/text/vi';
+import { AdSlot } from '@/features/ads/Ads';
+import { formatDate } from '@/utils/format';
 import { ComicGrid, Cover } from './ComicCard';
 
 function Section({ title, icon, link, children }: { title: string; icon: React.ReactNode; link?: string; children: React.ReactNode }) {
@@ -39,10 +41,22 @@ export function HomePage() {
 
   return (
     <div className="container-page">
-      <section className="mt-6 rounded-2xl border border-line bg-surface p-5 sm:p-6" aria-labelledby="home-intro-title">
+      <section className="mt-6 overflow-hidden rounded-2xl border border-line bg-surface" aria-labelledby="home-intro-title">
+        <img
+          src="/brand/hero-1640.webp"
+          srcSet="/brand/hero-820.webp 820w, /brand/hero-1640.webp 1640w"
+          sizes="(min-width: 1280px) 1232px, 100vw"
+          width={1640}
+          height={624}
+          alt="Rồng Nhỏ – nhóm dịch truyện tranh, truyện tranh dịch tiếng Việt"
+          className="aspect-[1640/624] w-full object-cover"
+          fetchPriority="high"
+        />
+        <div className="p-5 sm:p-6">
         <h1 id="home-intro-title" className="text-2xl font-bold leading-tight sm:text-3xl">
           Rồng Nhỏ – Đọc truyện tranh online
         </h1>
+        <span className="brand-rule mt-3 w-40" aria-hidden />
         <p className="mt-3 max-w-4xl text-sm leading-7 text-muted sm:text-base">
           Chào mừng bạn đến với Rồng Nhỏ, nơi khám phá và đọc truyện tranh được dịch sang tiếng Việt bởi các nhóm dịch.
           Bạn có thể tìm truyện mới, xem danh sách chương, theo dõi những bộ truyện yêu thích và quay lại đọc khi có cập nhật.
@@ -55,7 +69,9 @@ export function HomePage() {
           <Link className="font-medium text-accent hover:underline" to={paths.browse}>Khám phá danh sách truyện</Link>
           <Link className="font-medium text-accent hover:underline" to={paths.houses}>Tìm hiểu các nhóm dịch</Link>
         </div>
+        </div>
       </section>
+      <AdSlot slot="home_top" className="mt-6" />
       <Section title="Mới cập nhật" icon={<Sparkles className="h-5 w-5" />} link={paths.browse}>
         {updated.isError ? (
           <ErrorState error={updated.error} onRetry={() => updated.refetch()} />
@@ -66,6 +82,7 @@ export function HomePage() {
         )}
       </Section>
 
+      <AdSlot slot="home_middle" className="mt-10" />
       <div className="grid gap-x-8 lg:grid-cols-[1fr_20rem]">
         <div>
           <Section title="Truyện mới" icon={<Flame className="h-5 w-5" />} link={`${paths.browse}?sort=new`}>
@@ -155,6 +172,7 @@ export function BrowsePage({ mode }: { mode: 'browse' | 'search' | 'genre' }) {
         </div>
       </div>
 
+      <AdSlot slot="browse_top" className="mb-6" />
       {mode !== 'genre' && tags.data && tags.data.length > 0 && (
         <div className="-mx-4 mb-6 flex gap-2 overflow-x-auto px-4 pb-1">
           {tags.data.map((t) => (
@@ -211,6 +229,14 @@ export function HouseLogo({ url, name, size = 'md' }: { url: string | null; name
   );
 }
 
+const houseLinkLabels = [
+  ['facebook', 'Facebook'],
+  ['tiktok', 'TikTok'],
+  ['youtube', 'YouTube'],
+  ['discord', 'Discord'],
+  ['website', 'Trang web'],
+] as const;
+
 export function HousePage() {
   const { slug = '' } = useParams();
   const [params, setParams] = useSearchParams();
@@ -221,20 +247,64 @@ export function HousePage() {
 
   if (house.isError) return <div className="container-page py-10"><ErrorState error={house.error} onRetry={() => house.refetch()} /></div>;
   const h = house.data;
+  const stat = (label: string, value: React.ReactNode) => (
+    <div className="rounded-xl bg-surface-2 px-3 py-2">
+      <dt className="text-xs text-muted">{label}</dt>
+      <dd className="font-semibold">{value}</dd>
+    </div>
+  );
   return (
     <div className="container-page py-6">
-      <div className="card mb-8 flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
-        {h ? <HouseLogo url={h.logoUrl} name={h.name} size="lg" /> : <Skeleton className="h-20 w-20 rounded-2xl" />}
-        <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-semibold">{h?.name ?? '…'}</h1>
-          {h?.description && <p className="mt-1 text-sm text-muted">{h.description}</p>}
-          <div className="mt-2 flex flex-wrap gap-3 text-sm">
-            {h?.links.facebook && <a className="link" href={h.links.facebook} target="_blank" rel="noopener noreferrer nofollow">Facebook</a>}
-            {h?.links.discord && <a className="link" href={h.links.discord} target="_blank" rel="noopener noreferrer nofollow">Discord</a>}
-            {h?.links.website && <a className="link" href={h.links.website} target="_blank" rel="noopener noreferrer nofollow">Trang web</a>}
-          </div>
+      <section className="card mb-6 overflow-hidden" data-testid="house-header">
+        <div className="aspect-[1640/624] max-h-80 w-full bg-gradient-to-br from-accent-soft via-surface-2 to-gold-soft">
+          {h?.coverUrl && <img src={h.coverUrl} alt={`Ảnh bìa ${h.name}`} className="h-full w-full object-cover" fetchPriority="high" />}
         </div>
-      </div>
+        <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-end">
+          <div className="-mt-14 shrink-0 rounded-3xl border-4 border-surface bg-surface sm:-mt-16">
+            {h ? <HouseLogo url={h.logoUrl} name={h.name} size="lg" /> : <Skeleton className="h-20 w-20 rounded-2xl" />}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-semibold">{h?.name ?? '…'}</h1>
+              {h?.recruiting && <span className="rounded-full bg-gold-soft px-2.5 py-0.5 text-xs font-semibold text-ink">Đang tuyển thành viên</span>}
+            </div>
+            {h?.tagline && <p className="mt-0.5 text-sm italic text-muted">{h.tagline}</p>}
+          </div>
+          {h?.links.donate && (
+            <a className="inline-flex items-center justify-center rounded-xl bg-coral px-4 py-2 text-sm font-semibold text-white hover:opacity-90" href={h.links.donate} target="_blank" rel="noopener noreferrer nofollow">
+              Ủng hộ nhóm
+            </a>
+          )}
+        </div>
+        {h && (
+          <div className="grid gap-6 border-t border-line p-5 lg:grid-cols-[1fr_18rem]">
+            <div className="min-w-0 space-y-4">
+              {h.description ? <p className="whitespace-pre-line text-sm leading-7">{h.description}</p> : <p className="text-sm text-muted">Nhóm chưa có lời giới thiệu.</p>}
+              {h.recruiting && h.recruitmentInfo && (
+                <div className="rounded-xl border border-gold bg-gold-soft/60 p-4 text-sm">
+                  <p className="mb-1 font-semibold">Tuyển thành viên</p>
+                  <p className="whitespace-pre-line">{h.recruitmentInfo}</p>
+                </div>
+              )}
+            </div>
+            <div className="space-y-4">
+              <dl className="grid grid-cols-2 gap-2 text-sm">
+                {stat('Truyện', h.comicCount)}
+                {stat('Chương đã đăng', h.chapterCount)}
+                {stat('Thành lập', h.foundedYear ?? new Date(h.createdAt).getFullYear())}
+                {stat('Tham gia', formatDate(h.createdAt))}
+              </dl>
+              <div className="flex flex-wrap gap-2 text-sm">
+                {houseLinkLabels.map(([key, label]) => h.links[key] && (
+                  <a key={key} className="rounded-full border border-line px-3 py-1 hover:border-accent hover:text-accent" href={h.links[key]!} target="_blank" rel="noopener noreferrer nofollow">{label}</a>
+                ))}
+                {h.contactEmail && <a className="rounded-full border border-line px-3 py-1 hover:border-accent hover:text-accent" href={`mailto:${h.contactEmail}`}>{h.contactEmail}</a>}
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
+      <AdSlot slot="house_top" className="mb-6" />
       <h2 className="mb-4 text-lg font-semibold">Truyện của nhóm</h2>
       {comics.data?.items.length === 0 ? <EmptyState title="Nhóm chưa đăng truyện nào" /> : <ComicGrid comics={comics.data?.items} loading={comics.isLoading} />}
       {comics.data && <Pagination page={comics.data.page} totalPages={comics.data.totalPages} onChange={(p) => setParams({ page: String(p) })} />}

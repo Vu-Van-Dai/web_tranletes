@@ -61,6 +61,7 @@ public static class AuditActions
     public const string ChapterUnpublished = "chapter.unpublished";
     public const string ChapterRetried = "chapter.retried";
     public const string SettingsUpdated = "settings.updated";
+    public const string AdsUpdated = "settings.ads_updated";
     public const string CrossTenantDenied = "security.cross_tenant_denied";
     public const string HouseSelectorMismatch = "security.house_selector_mismatch";
 }

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using ComicPlatform.Api.Infrastructure;
 using ComicPlatform.Application.Abstractions;
 using ComicPlatform.Application.Admin;
+using ComicPlatform.Application.Analytics;
 using ComicPlatform.Application.Settings;
 using ComicPlatform.Application.Tenancy;
 using ComicPlatform.Infrastructure.Configuration;
@@ -69,6 +70,14 @@ public static class AdminEndpoints
         admin.MapGet("/settings", async (SettingsService s, CancellationToken ct) => Results.Ok(await s.GetAsync(ct)));
         admin.MapPut("/settings", async (UpdateSystemSettingsRequest request, SettingsService s, CancellationToken ct) =>
             Results.Ok(await s.UpdateAsync(request, ct)));
+        admin.MapGet("/revenue", async (DateOnly? from, DateOnly? to, ViewReportService s, CancellationToken ct) =>
+            Results.Ok(await s.AdminReportAsync(from, to, ct)));
+        admin.MapGet("/revenue/houses/{id:guid}", async (Guid id, DateOnly? from, DateOnly? to, ViewReportService s, CancellationToken ct) =>
+            Results.Ok(await s.AdminHouseReportAsync(id, from, to, ct)));
+        admin.MapGet("/ads", async (AdsService s, CancellationToken ct) => Results.Ok(await s.GetAsync(ct)));
+        admin.MapPut("/ads", async (AdsConfigDto request, AdsService s, CancellationToken ct) => Results.Ok(await s.UpdateAsync(request, ct)));
+        admin.MapPost("/ads/images", async (HttpContext http, AdsService s, LimitSettings limits, CancellationToken ct) =>
+            Results.Ok(new { url = await MultipartUpload.ReadFirstFileAsync(http, limits.MaxCoverSize, (stream, _) => s.UploadImageAsync(stream, ct), ct) }));
         admin.MapGet("/system", (PlatformSettings settings, ProcessingMetrics metrics, IProcessingQueue queue, ImageWorkerPool pool,
             StoragePaths paths, IObjectStore store) =>
         {

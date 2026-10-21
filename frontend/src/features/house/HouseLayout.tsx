@@ -1,4 +1,4 @@
-import { BookCopy, Cog, Gauge, Layers, UserCog, Users } from 'lucide-react';
+import { BarChart3, BookCopy, Cog, Gauge, Layers, UserCog, Users } from 'lucide-react';
 import { paths } from '@/app/paths';
 import { Select } from '@/components/ui';
 import { useAuth } from '@/features/auth/AuthProvider';
@@ -39,6 +39,7 @@ export function HouseLayout() {
           { to: paths.studio.root, label: 'Tổng quan', icon: <Gauge className="h-4 w-4" />, end: true },
           { to: paths.studio.comics, label: 'Truyện', icon: <BookCopy className="h-4 w-4" /> },
           { to: paths.studio.processing, label: 'Trạng thái xử lý', icon: <Layers className="h-4 w-4" /> },
+          { to: paths.studio.stats, label: 'Lượt xem & doanh thu', icon: <BarChart3 className="h-4 w-4" /> },
           { to: paths.studio.members, label: 'Thành viên', icon: <Users className="h-4 w-4" />, visible: can('viewMembers') },
           { to: paths.studio.profile, label: 'Hồ sơ nhóm', icon: <UserCog className="h-4 w-4" /> },
           { to: paths.studio.settings, label: 'Cài đặt', icon: <Cog className="h-4 w-4" /> },

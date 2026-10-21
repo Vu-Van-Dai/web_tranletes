@@ -107,6 +107,11 @@ public sealed class ChapterProcessingPipeline(
             await db.SaveChangesAsync(CancellationToken.None);
 
             uploads.Delete(job.UploadPath);
+            foreach (var extra in job.ExtraPages)
+            {
+                uploads.Delete(extra.Path);
+            }
+
             TryDeleteDirectory(workDir);
             foreach (var old in obsolete)
             {
@@ -147,29 +152,54 @@ public sealed class ChapterProcessingPipeline(
 
     private sealed record ConvertedPage(int PageNumber, string Path, int Width, int Height, long Size, string SourceName);
 
+    /// <summary>One page source: an archive entry, or a promotional image uploaded next to the archive.</summary>
+    private sealed record PageSource(ZipArchiveEntry? Entry, ExtraPageFile? Extra, string DisplayName);
+
     private async Task<List<ConvertedPage>> ConvertArchiveAsync(AppDbContext db, ProcessingJob job, string workDir, string pagesDir, CancellationToken ct)
     {
         await using var zipStream = new FileStream(job.UploadPath, FileMode.Open, FileAccess.Read, FileShare.Read, 81_920, FileOptions.Asynchronous);
         using var archive = new ZipArchive(zipStream, ZipArchiveMode.Read);
-        var limitsForArchive = new ArchiveLimits(limits.MaxPagesPerChapter, limits.MaxExtractedSize, limits.MaxEntrySize, limits.MaxCompressionRatio);
+        var extras = job.ExtraPages;
+        var limitsForArchive = new ArchiveLimits(Math.Max(1, limits.MaxPagesPerChapter - extras.Count), limits.MaxExtractedSize, limits.MaxEntrySize, limits.MaxCompressionRatio);
         var entries = SafeZipReader.ValidateAndOrder(archive, limitsForArchive);
 
-        job.ReportProgress(JobStage.Converting, 0, entries.Count, clock.GetUtcNow());
+        // Promotional pages: "start" ones before the archive pages, "end" ones after, in upload order.
+        var sources = new List<PageSource>(entries.Count + extras.Count);
+        sources.AddRange(extras.Where(e => e.Position == ExtraPagePosition.Start).Select(e => new PageSource(null, e, ExtraDisplayName(e))));
+        sources.AddRange(entries.Select(e => new PageSource(e, null, e.FullName)));
+        sources.AddRange(extras.Where(e => e.Position == ExtraPagePosition.End).Select(e => new PageSource(null, e, ExtraDisplayName(e))));
+
+        job.ReportProgress(JobStage.Converting, 0, sources.Count, clock.GetUtcNow());
         await db.SaveChangesAsync(ct);
 
         using var conversionCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        var pending = new List<Task<ConvertedPage>>(entries.Count);
-        var width = Math.Max(3, entries.Count.ToString(CultureInfo.InvariantCulture).Length);
+        var pending = new List<Task<ConvertedPage>>(sources.Count);
+        var width = Math.Max(3, sources.Count.ToString(CultureInfo.InvariantCulture).Length);
         long extracted = 0;
         try
         {
             // Extraction is sequential (ZipArchive is not thread-safe); conversions overlap on the worker pool.
-            for (var i = 0; i < entries.Count; i++)
+            for (var i = 0; i < sources.Count; i++)
             {
-                var entry = entries[i];
+                var source = sources[i];
                 var pageNumber = i + 1;
                 var raw = Path.Combine(workDir, pageNumber.ToString(CultureInfo.InvariantCulture) + ".bin");
-                extracted += await SafeZipReader.ExtractAsync(entry, raw, limits.MaxEntrySize, ct);
+                if (source.Entry is { } entry)
+                {
+                    extracted += await SafeZipReader.ExtractAsync(entry, raw, limits.MaxEntrySize, ct);
+                }
+                else
+                {
+                    // Copy, so the original stays available for a retry.
+                    if (!File.Exists(source.Extra!.Path))
+                    {
+                        throw new PipelineException("upload_expired", "Ảnh quảng bá đã hết hạn lưu trữ, vui lòng tải chương lên lại.");
+                    }
+
+                    File.Copy(source.Extra.Path, raw, overwrite: true);
+                    extracted += new FileInfo(raw).Length;
+                }
+
                 if (extracted > limits.MaxExtractedSize)
                 {
                     throw new PipelineException("archive_too_large", $"Tổng dung lượng ảnh sau giải nén vượt quá {limits.MaxExtractedSize / (1024 * 1024)} MB.");
@@ -178,16 +208,16 @@ public sealed class ChapterProcessingPipeline(
                 var (format, animated) = await ImageSignature.DetectFileAsync(raw, ct);
                 if (format == ImageFormat.Unknown)
                 {
-                    throw new PipelineException("unsupported_image", $"Tệp \"{PipelineException.DisplayName(entry.FullName)}\" không phải ảnh JPEG/PNG/WebP hợp lệ.");
+                    throw new PipelineException("unsupported_image", $"Tệp \"{PipelineException.DisplayName(source.DisplayName)}\" không phải ảnh JPEG/PNG/WebP hợp lệ.");
                 }
 
                 if (animated)
                 {
-                    throw new PipelineException("animated_image", $"Ảnh động \"{PipelineException.DisplayName(entry.FullName)}\" không được hỗ trợ.");
+                    throw new PipelineException("animated_image", $"Ảnh động \"{PipelineException.DisplayName(source.DisplayName)}\" không được hỗ trợ.");
                 }
 
                 var output = Path.Combine(pagesDir, pageNumber.ToString("D" + width, CultureInfo.InvariantCulture) + ".webp");
-                pending.Add(ConvertAsync(pageNumber, raw, format, output, entry.FullName, conversionCts.Token));
+                pending.Add(ConvertAsync(pageNumber, raw, format, output, source.DisplayName, conversionCts.Token));
             }
 
             var results = new List<ConvertedPage>(pending.Count);
@@ -202,7 +232,7 @@ public sealed class ChapterProcessingPipeline(
                 var now = clock.GetUtcNow();
                 if (now - lastReport >= ProgressInterval || remaining.Count == 0)
                 {
-                    job.ReportProgress(JobStage.Converting, results.Count, entries.Count, now);
+                    job.ReportProgress(JobStage.Converting, results.Count, sources.Count, now);
                     await db.SaveChangesAsync(ct);
                     lastReport = now;
                 }
@@ -217,6 +247,9 @@ public sealed class ChapterProcessingPipeline(
             throw;
         }
     }
+
+    private static string ExtraDisplayName(ExtraPageFile extra) =>
+        (extra.Position == ExtraPagePosition.Start ? "[Ảnh quảng bá đầu chương] " : "[Ảnh quảng bá cuối chương] ") + (extra.FileName ?? "poster");
 
     private async Task<ConvertedPage> ConvertAsync(int pageNumber, string raw, ImageFormat format, string output, string displayName, CancellationToken ct)
     {

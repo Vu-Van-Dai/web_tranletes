@@ -32,7 +32,8 @@ export default defineConfig({
       url: 'http://localhost:4173',
       timeout: 240_000,
       reuseExistingServer: false,
-      env: { API_PROXY_TARGET: `http://localhost:${apiPort}` },
+      // No AdSense in E2E builds (external ad script, console noise).
+      env: { API_PROXY_TARGET: `http://localhost:${apiPort}`, PUBLIC_ADSENSE_CLIENT: '' },
     },
   ],
 });

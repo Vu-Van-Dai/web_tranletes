@@ -11,6 +11,8 @@ import { chapterLabel, cn, formatBytes } from '@/utils/format';
 import type { ReaderData } from '@/types/api';
 import { loadPackage, PackageError, type LoadedPackage } from './package';
 import { PageWindow } from './pageWindow';
+import { useVerifiedView } from './viewTracking';
+import { AdSlot, AdsRuntime } from '@/features/ads/Ads';
 
 type Mode = 'vertical' | 'paged';
 
@@ -165,9 +167,7 @@ function Reader({ data, onStale }: { data: ReaderData; onStale: () => void }) {
   }, [mode]);
 
   // ---- Reading statistics, progress and next-chapter prefetch ----
-  useEffect(() => {
-    publicApi.view(chapter.id).catch(() => undefined);
-  }, [chapter.id]);
+  useVerifiedView(chapter.id, pkg !== null, current);
 
   useEffect(() => {
     if (status !== 'authenticated') return;
@@ -271,6 +271,7 @@ function Reader({ data, onStale }: { data: ReaderData; onStale: () => void }) {
 
       {/* Content */}
       <main className="pb-24 pt-14">
+        <AdSlot slot="reader_top" className="mx-auto my-3 max-w-[900px]" />
         {error ? (
           <div className="mx-auto max-w-xl p-6">
             <ErrorState error={error instanceof PackageError ? new Error(error.message) : error} title="Không tải được chương" onRetry={() => onStale()} />
@@ -309,10 +310,12 @@ function Reader({ data, onStale }: { data: ReaderData; onStale: () => void }) {
             onToggleBars={() => setBarsVisible((v) => !v)} />
         )}
 
+        {pkg && <AdSlot slot="reader_bottom" className="mx-auto my-4 max-w-[900px]" />}
         {pkg && (
           <EndOfChapter data={data} onPrev={() => goChapter(chapter.prev?.id)} onNext={() => goChapter(chapter.next?.id)} />
         )}
       </main>
+      <AdsRuntime />
 
       {/* Bottom bar */}
       <footer className={cn('fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 backdrop-blur transition-transform', !barsVisible && 'translate-y-full')}>

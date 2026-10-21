@@ -64,6 +64,51 @@ public sealed class UploadStore(StoragePaths paths, ILogger<UploadStore> logger)
         }
     }
 
+    public async Task<SavedUpload> SaveImageAsync(Guid uploadId, int index, Stream content, long maxBytes, CancellationToken ct)
+    {
+        var final = paths.ExtraUploadPath(uploadId, index);
+        Directory.CreateDirectory(Path.GetDirectoryName(final)!);
+        var partial = final + ".part";
+        long total = 0;
+        try
+        {
+            await using (var output = new FileStream(partial, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81_920, FileOptions.Asynchronous))
+            {
+                var buffer = new byte[81_920];
+                int read;
+                while ((read = await content.ReadAsync(buffer, ct)) > 0)
+                {
+                    total += read;
+                    if (total > maxBytes)
+                    {
+                        throw Errors.PayloadTooLarge($"Ảnh quảng bá vượt quá giới hạn {maxBytes / (1024 * 1024)} MB.");
+                    }
+
+                    await output.WriteAsync(buffer.AsMemory(0, read), ct);
+                }
+            }
+
+            if (total == 0)
+            {
+                throw Errors.BadRequest("empty_upload", "Ảnh quảng bá rỗng.");
+            }
+
+            var (format, animated) = await ImageSignature.DetectFileAsync(partial, ct);
+            if (format == ImageFormat.Unknown || animated)
+            {
+                throw Errors.BadRequest("unsupported_image", "Ảnh quảng bá phải là ảnh JPEG, PNG hoặc WebP (không động).");
+            }
+
+            File.Move(partial, final, overwrite: true);
+            return new SavedUpload(final, total);
+        }
+        catch
+        {
+            Delete(partial);
+            throw;
+        }
+    }
+
     public bool Exists(string path) => IsUnderTemp(path) && File.Exists(path);
 
     public void Delete(string path)
@@ -113,7 +158,7 @@ public sealed class ChapterFiles(StoragePaths paths, ILogger<ChapterFiles> logge
     }
 }
 
-/// <summary>Cover and logo images: validate → WebP thumbnail (bounded worker pool) → block volume → object store.</summary>
+/// <summary>Cover, logo, house banner and ad images: validate → WebP thumbnail (bounded worker pool) → block volume → object store.</summary>
 public sealed class MediaService(
     StoragePaths paths,
     IObjectStore store,
@@ -126,6 +171,14 @@ public sealed class MediaService(
 
     public Task<StoredImage> StoreLogoAsync(Guid houseId, Stream input, CancellationToken ct) =>
         StoreAsync(input, 256, 256, hash => ObjectKeys.Logo(houseId, hash), ct);
+
+    /// <summary>Wide banner of the house page (Facebook-cover proportions), shrunk to fit 1640×624.</summary>
+    public Task<StoredImage> StoreHouseCoverAsync(Guid houseId, Stream input, CancellationToken ct) =>
+        StoreAsync(input, 1640, 624, hash => ObjectKeys.HouseCover(houseId, hash), ct);
+
+    /// <summary>Advertisement creative (banner or pop-up image), shrunk to fit 1200×1200.</summary>
+    public Task<StoredImage> StoreAdImageAsync(Stream input, CancellationToken ct) =>
+        StoreAsync(input, 1200, 1200, ObjectKeys.Ad, ct);
 
     private async Task<StoredImage> StoreAsync(Stream input, int maxWidth, int maxHeight, Func<string, string> keyFor, CancellationToken ct)
     {

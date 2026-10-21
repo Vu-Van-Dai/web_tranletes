@@ -17,7 +17,7 @@ by Cloudflare (edge cache → Worker → R2). Each chapter is delivered as **one
 - [Architecture](docs/architecture.md) · [Database schema](docs/database.md) · [API list](docs/api.md)
 - [RBAC & tenant isolation](docs/rbac.md) · [CPK1 package format](docs/package-format.md)
 - [Deployment (Oracle A1 + Cloudflare)](docs/deployment.md) · [Testing & results](docs/testing.md)
-- [Known limitations & next steps](docs/limitations.md) · [UI research](docs/ui-research.md) · [Benchmarks](docs/benchmarks/)
+- [Ads, verified views & revenue](docs/monetization.md) · [Known limitations & next steps](docs/limitations.md) · [UI research](docs/ui-research.md) · [Benchmarks](docs/benchmarks/)
 
 ## Local development
 

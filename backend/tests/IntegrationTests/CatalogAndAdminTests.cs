@@ -80,11 +80,11 @@ public class PublicCatalogTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var (comicId, chapterId) = await _s.PublishedChapterAsync(owner, "Truyện Hot Nhất");
         var reader = await _s.RegisterAsync("fan_cung");
 
+        // A bare beacon without a verified ticket is accepted (204) but never counted.
         await reader.JsonAsync(HttpMethod.Post, $"/api/chapters/{chapterId}/view", new { }, HttpStatusCode.NoContent);
-        await reader.JsonAsync(HttpMethod.Post, $"/api/chapters/{chapterId}/view", new { }, HttpStatusCode.NoContent); // deduplicated
         await factory.Services.GetRequiredService<ViewFlushService>().FlushAsync(CancellationToken.None);
         var ranking = await _s.Anonymous().GetAsync("/api/rankings?period=day");
-        Assert.Contains(ranking.Items(), c => c.Id() == comicId);
+        Assert.DoesNotContain(ranking.Items(), c => c.Id() == comicId);
 
         await reader.JsonAsync(HttpMethod.Put, $"/api/me/follows/{comicId}", new { }, HttpStatusCode.NoContent);
         Assert.Contains((await reader.GetAsync("/api/me/follows")).Items(), c => c.Id() == comicId);

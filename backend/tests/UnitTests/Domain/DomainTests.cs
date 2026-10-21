@@ -171,6 +171,11 @@ public class ObjectKeyTests
         Assert.Equal(3, parsed.Version);
         Assert.True(ObjectKeyParser.TryParse(ObjectKeys.Cover(comic, "0123456789abcdef"), out _));
         Assert.True(ObjectKeyParser.TryParse(ObjectKeys.Logo(comic, "0123456789abcdef"), out _));
+        Assert.True(ObjectKeyParser.TryParse(ObjectKeys.HouseCover(comic, "0123456789abcdef"), out var houseCover));
+        Assert.Equal(ObjectKind.HouseCover, houseCover.Kind);
+        Assert.True(ObjectKeyParser.TryParse(ObjectKeys.Ad("0123456789abcdef"), out var ad));
+        Assert.Equal(ObjectKind.Ad, ad.Kind);
+        Assert.False(ObjectKeyParser.TryParse("ads/../0123456789abcdef.webp", out _));
     }
 
     [Theory]

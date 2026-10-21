@@ -20,6 +20,8 @@ export const paths = {
     stats: '/quan-tri/thong-ke',
     audit: '/quan-tri/nhat-ky',
     settings: '/quan-tri/cai-dat',
+    revenue: '/quan-tri/doanh-thu',
+    ads: '/quan-tri/quang-cao',
   },
   studio: {
     root: '/quan-ly-nhom',
@@ -30,6 +32,7 @@ export const paths = {
     chapter: (id: string) => `/quan-ly-nhom/chuong/${id}`,
     preview: (id: string, version: number) => `/quan-ly-nhom/chuong/${id}/xem-truoc/${version}`,
     processing: '/quan-ly-nhom/xu-ly',
+    stats: '/quan-ly-nhom/thong-ke',
     settings: '/quan-ly-nhom/cai-dat',
   },
 } as const;

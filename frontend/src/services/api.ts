@@ -1,7 +1,12 @@
-import { apiUrl, putFile, request, uploadFile } from './http';
+import { apiUrl, putFile, request, uploadFile, type ExtraPart } from './http';
 import type { UploadLimits } from '@/features/house/zipInspect';
 import type {
   AdminHouseComic,
+  AdminRevenueReport,
+  AdsConfig,
+  HouseLinks,
+  HouseViewReport,
+  ViewTicket,
   AdminHouseDetail,
   AdminHouseItem,
   AdminStats,
@@ -77,7 +82,10 @@ export const publicApi = {
   houses: () => request<PublicHouse[]>('/api/houses'),
   house: (slug: string) => request<PublicHouse>(`/api/houses/${encodeURIComponent(slug)}`),
   rankings: (period: 'day' | 'week' | 'month') => request<ComicCard[]>(`/api/rankings${qs({ period })}`),
-  view: (chapterId: string) => request<void>(`/api/chapters/${chapterId}/view`, { method: 'POST' }),
+  viewTicket: (chapterId: string, humanToken?: string) =>
+    request<ViewTicket>(`/api/chapters/${chapterId}/view-ticket`, { method: 'POST', body: { humanToken } }),
+  view: (chapterId: string, body: { ticket: string; pagesSeen: number; activeSeconds: number }) =>
+    request<void>(`/api/chapters/${chapterId}/view`, { method: 'POST', body }),
 };
 
 export const libraryApi = {
@@ -104,11 +112,25 @@ export interface SaveComicBody {
   tags: string[];
 }
 
+export interface UpdateHouseProfileBody {
+  name: string;
+  slug: string;
+  description: string;
+  links: Partial<Record<keyof HouseLinks, string | undefined>>;
+  tagline?: string;
+  contactEmail?: string;
+  foundedYear?: number | null;
+  recruiting: boolean;
+  recruitmentInfo?: string;
+}
+
 export const houseApi = {
   profile: () => request<HouseProfile>('/api/translation-house/profile', h),
-  updateProfile: (body: { name: string; slug: string; description: string; links: { facebook?: string; discord?: string; website?: string } }) =>
-    request<HouseProfile>('/api/translation-house/profile', { ...h, method: 'PUT', body }),
+  updateProfile: (body: UpdateHouseProfileBody) => request<HouseProfile>('/api/translation-house/profile', { ...h, method: 'PUT', body }),
   uploadLogo: (file: File) => putFile<HouseProfile>('/api/translation-house/profile/logo', file),
+  uploadHouseCover: (file: File) => putFile<HouseProfile>('/api/translation-house/profile/cover', file),
+  removeHouseCover: () => request<HouseProfile>('/api/translation-house/profile/cover', { ...h, method: 'DELETE' }),
+  viewStats: (query: { from?: string; to?: string }) => request<HouseViewReport>(`/api/translation-house/stats/views${qs(query)}`, h),
   dashboard: () => request<HouseDashboard>('/api/translation-house/dashboard', h),
 
   members: () => request<Member[]>('/api/translation-house/members', h),
@@ -131,8 +153,9 @@ export const houseApi = {
   updateChapter: (id: string, body: { number: number; title?: string }) =>
     request<HouseChapterDetail>(`/api/translation-house/chapters/${id}`, { ...h, method: 'PUT', body }),
   deleteChapter: (id: string) => request<void>(`/api/translation-house/chapters/${id}`, { ...h, method: 'DELETE' }),
-  upload: (id: string, file: File, onProgress: (f: number) => void, signal?: AbortSignal) =>
-    uploadFile<JobSummary>(`/api/translation-house/chapters/${id}/upload`, file, onProgress, signal),
+  /** Promotional images (promoStart / promoEnd) travel before the archive in the same request. */
+  upload: (id: string, file: File, onProgress: (f: number) => void, signal?: AbortSignal, promos: ExtraPart[] = []) =>
+    uploadFile<JobSummary>(`/api/translation-house/chapters/${id}/upload`, file, onProgress, signal, promos),
   processing: (id: string) => request<JobSummary | null>(`/api/translation-house/chapters/${id}/processing`, h),
   publish: (id: string) => request<HouseChapterDetail>(`/api/translation-house/chapters/${id}/publish`, { ...h, method: 'POST' }),
   unpublish: (id: string) => request<HouseChapterDetail>(`/api/translation-house/chapters/${id}/unpublish`, { ...h, method: 'POST' }),
@@ -168,4 +191,9 @@ export const adminApi = {
   settings: () => request<SystemSettings>('/api/admin/settings'),
   updateSettings: (body: Partial<SystemSettings>) => request<SystemSettings>('/api/admin/settings', { method: 'PUT', body }),
   system: () => request<SystemInfo>('/api/admin/system'),
+  revenue: (query: { from?: string; to?: string }) => request<AdminRevenueReport>(`/api/admin/revenue${qs(query)}`),
+  houseRevenue: (id: string, query: { from?: string; to?: string }) => request<HouseViewReport>(`/api/admin/revenue/houses/${id}${qs(query)}`),
+  ads: () => request<AdsConfig>('/api/admin/ads'),
+  updateAds: (body: AdsConfig) => request<AdsConfig>('/api/admin/ads', { method: 'PUT', body }),
+  uploadAdImage: (file: File) => putFile<{ url: string }>('/api/admin/ads/images', file, 'POST'),
 };
