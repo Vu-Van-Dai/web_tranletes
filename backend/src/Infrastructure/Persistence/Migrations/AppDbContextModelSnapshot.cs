@@ -23,6 +23,101 @@ namespace ComicPlatform.Infrastructure.Persistence.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "pg_trgm");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("ComicPlatform.Domain.Analytics.ChapterViewDaily", b =>
+                {
+                    b.Property<Guid>("ChapterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("chapter_id");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date")
+                        .HasColumnName("day");
+
+                    b.Property<Guid>("ComicId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("comic_id");
+
+                    b.Property<decimal>("Revenue")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("revenue");
+
+                    b.Property<long>("SuspiciousViews")
+                        .HasColumnType("bigint")
+                        .HasColumnName("suspicious_views");
+
+                    b.Property<Guid>("TranslationHouseId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("translation_house_id");
+
+                    b.Property<long>("Views")
+                        .HasColumnType("bigint")
+                        .HasColumnName("views");
+
+                    b.HasKey("ChapterId", "Day")
+                        .HasName("pk_chapter_view_daily");
+
+                    b.HasIndex("Day")
+                        .HasDatabaseName("ix_chapter_view_daily_day");
+
+                    b.HasIndex("ComicId", "Day")
+                        .HasDatabaseName("ix_chapter_view_daily_comic_id_day");
+
+                    b.HasIndex("TranslationHouseId", "Day")
+                        .HasDatabaseName("ix_chapter_view_daily_translation_house_id_day");
+
+                    b.ToTable("chapter_view_daily", (string)null);
+                });
+
+            modelBuilder.Entity("ComicPlatform.Domain.Analytics.ViewReceipt", b =>
+                {
+                    b.Property<Guid>("ChapterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("chapter_id");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date")
+                        .HasColumnName("day");
+
+                    b.Property<string>("VisitorHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("visitor_hash");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.HasKey("ChapterId", "Day", "VisitorHash")
+                        .HasName("pk_view_receipts");
+
+                    b.HasIndex("Day")
+                        .HasDatabaseName("ix_view_receipts_day");
+
+                    b.ToTable("view_receipts", (string)null);
+                });
+
+            modelBuilder.Entity("ComicPlatform.Domain.Analytics.ViewRejectionDaily", b =>
+                {
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date")
+                        .HasColumnName("day");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("reason");
+
+                    b.Property<long>("Count")
+                        .HasColumnType("bigint")
+                        .HasColumnName("count");
+
+                    b.HasKey("Day", "Reason")
+                        .HasName("pk_view_rejection_daily");
+
+                    b.ToTable("view_rejection_daily", (string)null);
+                });
+
             modelBuilder.Entity("ComicPlatform.Domain.Auditing.AuditLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -867,6 +962,16 @@ namespace ComicPlatform.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("ContactEmail")
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)")
+                        .HasColumnName("contact_email");
+
+                    b.Property<string>("CoverKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("cover_key");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -875,6 +980,10 @@ namespace ComicPlatform.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)")
                         .HasColumnName("description");
+
+                    b.Property<int?>("FoundedYear")
+                        .HasColumnType("integer")
+                        .HasColumnName("founded_year");
 
                     b.Property<string>("LogoKey")
                         .HasMaxLength(200)
@@ -886,6 +995,15 @@ namespace ComicPlatform.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
                         .HasColumnName("name");
+
+                    b.Property<bool>("Recruiting")
+                        .HasColumnType("boolean")
+                        .HasColumnName("recruiting");
+
+                    b.Property<string>("RecruitmentInfo")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("recruitment_info");
 
                     b.Property<string>("Slug")
                         .IsRequired()
@@ -903,6 +1021,11 @@ namespace ComicPlatform.Infrastructure.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
                         .HasColumnName("suspended_reason");
+
+                    b.Property<string>("Tagline")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("tagline");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -1142,7 +1265,38 @@ namespace ComicPlatform.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_processing_jobs_users_requested_by_user_id");
 
+                    b.OwnsMany("ComicPlatform.Domain.Publishing.ExtraPageFile", "ExtraPages", b1 =>
+                        {
+                            b1.Property<Guid>("ProcessingJobId");
+
+                            b1.Property<int>("__synthesizedOrdinal")
+                                .ValueGeneratedOnAdd();
+
+                            b1.Property<string>("FileName");
+
+                            b1.Property<string>("Path")
+                                .IsRequired();
+
+                            b1.Property<int>("Position");
+
+                            b1.Property<long>("Size");
+
+                            b1.HasKey("ProcessingJobId", "__synthesizedOrdinal");
+
+                            b1.ToTable("processing_jobs");
+
+                            b1
+                                .ToJson("extra_pages")
+                                .HasColumnType("jsonb");
+
+                            b1.WithOwner()
+                                .HasForeignKey("ProcessingJobId")
+                                .HasConstraintName("fk_processing_jobs_processing_jobs_processing_job_id");
+                        });
+
                     b.Navigation("Chapter");
+
+                    b.Navigation("ExtraPages");
                 });
 
             modelBuilder.Entity("ComicPlatform.Domain.Tenancy.TranslationHouse", b =>
@@ -1153,9 +1307,15 @@ namespace ComicPlatform.Infrastructure.Persistence.Migrations
 
                             b1.Property<string>("Discord");
 
+                            b1.Property<string>("Donate");
+
                             b1.Property<string>("Facebook");
 
+                            b1.Property<string>("Tiktok");
+
                             b1.Property<string>("Website");
+
+                            b1.Property<string>("Youtube");
 
                             b1.HasKey("TranslationHouseId");
 

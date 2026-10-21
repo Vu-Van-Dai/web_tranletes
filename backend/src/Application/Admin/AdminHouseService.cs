@@ -187,7 +187,7 @@ public sealed class AdminHouseService(
             .ToListAsync(ct);
 
         return new AdminHouseDetail(h.Id, h.Name, h.Slug, h.Description, urls.ObjectUrl(h.LogoKey), ApiText.Enum(h.Status), h.SuspendedReason,
-            new HouseLinksDto(h.Links.Facebook, h.Links.Discord, h.Links.Website),
+            HouseLinksDto.From(h.Links),
             await db.TranslationHouseMembers.CountAsync(m => m.TranslationHouseId == houseId && m.Status == MemberStatus.Active, ct),
             await comics.CountAsync(ct),
             await chapters.CountAsync(ct),

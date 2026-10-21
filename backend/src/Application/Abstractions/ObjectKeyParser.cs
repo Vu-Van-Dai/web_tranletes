@@ -8,6 +8,8 @@ public enum ObjectKind
     Package,
     Cover,
     Logo,
+    HouseCover,
+    Ad,
 }
 
 public sealed record ParsedObjectKey(ObjectKind Kind, Guid OwnerId, Guid? ChapterId, int? Version, string? Hash)
@@ -51,6 +53,20 @@ public static partial class ObjectKeyParser
             return true;
         }
 
+        m = HouseCoverRegex().Match(key);
+        if (m.Success)
+        {
+            parsed = new ParsedObjectKey(ObjectKind.HouseCover, Guid.Parse(m.Groups["house"].Value), null, null, m.Groups["hash"].Value);
+            return true;
+        }
+
+        m = AdRegex().Match(key);
+        if (m.Success)
+        {
+            parsed = new ParsedObjectKey(ObjectKind.Ad, Guid.Empty, null, null, m.Groups["hash"].Value);
+            return true;
+        }
+
         return false;
     }
 
@@ -64,4 +80,10 @@ public static partial class ObjectKeyParser
 
     [GeneratedRegex("^houses/(?<house>" + GuidPattern + @")/logo/(?<hash>[0-9a-f]{16})\.webp$")]
     private static partial Regex LogoRegex();
+
+    [GeneratedRegex("^houses/(?<house>" + GuidPattern + @")/cover/(?<hash>[0-9a-f]{16})\.webp$")]
+    private static partial Regex HouseCoverRegex();
+
+    [GeneratedRegex(@"^ads/(?<hash>[0-9a-f]{16})\.webp$")]
+    private static partial Regex AdRegex();
 }

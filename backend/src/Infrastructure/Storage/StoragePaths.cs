@@ -10,8 +10,9 @@ namespace ComicPlatform.Infrastructure.Storage;
 /// {COMIC_STORAGE_PATH}/{comicId}/chapters/{chapterId}/v{n}/pages/001.webp
 /// {COMIC_STORAGE_PATH}/{comicId}/chapters/{chapterId}/v{n}/chapter.pkg
 /// {COMIC_STORAGE_PATH}/{comicId}/cover/{hash}.webp
-/// {COMIC_STORAGE_PATH}/_houses/{houseId}/logo/{hash}.webp
-/// {TEMP_STORAGE_PATH}/uploads/{jobId}.zip,  {TEMP_STORAGE_PATH}/work/{jobId}/
+/// {COMIC_STORAGE_PATH}/_houses/{houseId}/logo/{hash}.webp,  {COMIC_STORAGE_PATH}/_houses/{houseId}/cover/{hash}.webp
+/// {COMIC_STORAGE_PATH}/_ads/{hash}.webp
+/// {TEMP_STORAGE_PATH}/uploads/{jobId}.zip (+ {jobId}.extra{n}.img),  {TEMP_STORAGE_PATH}/work/{jobId}/
 /// </code>
 /// Every segment comes from a GUID or an integer; user-supplied names never reach the file system.
 /// </summary>
@@ -43,6 +44,9 @@ public sealed class StoragePaths : IStoragePaths
 
     public string UploadPath(Guid jobId) => Combine(TempRoot, "uploads", Id(jobId) + ".zip");
 
+    public string ExtraUploadPath(Guid uploadId, int index) =>
+        Combine(TempRoot, "uploads", Id(uploadId) + ".extra" + index.ToString(CultureInfo.InvariantCulture) + ".img");
+
     public string WorkDir(Guid jobId) => Combine(TempRoot, "work", Id(jobId));
 
     /// <summary>Block-volume file backing a (validated) object key.</summary>
@@ -58,6 +62,8 @@ public sealed class StoragePaths : IStoragePaths
             ObjectKind.Package => PackagePath(key.OwnerId, key.ChapterId!.Value, key.Version!.Value),
             ObjectKind.Cover => Combine(ComicDir(key.OwnerId), "cover", key.Hash + ".webp"),
             ObjectKind.Logo => Combine(ComicsRoot, "_houses", Id(key.OwnerId), "logo", key.Hash + ".webp"),
+            ObjectKind.HouseCover => Combine(ComicsRoot, "_houses", Id(key.OwnerId), "cover", key.Hash + ".webp"),
+            ObjectKind.Ad => Combine(ComicsRoot, "_ads", key.Hash + ".webp"),
             _ => throw new ArgumentOutOfRangeException(nameof(objectKey)),
         };
     }

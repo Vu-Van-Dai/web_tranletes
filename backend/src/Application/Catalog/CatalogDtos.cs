@@ -62,9 +62,27 @@ public sealed record ReaderPageDto(int N, int W, int H);
 
 public sealed record ReaderDto(ChapterSummaryDto Chapter, ReaderPackageDto Package, IReadOnlyList<ReaderPageDto> Pages);
 
-public sealed record PublicHouseDto(Guid Id, string Name, string Slug, string? Description, string? LogoUrl, int ComicCount, HouseLinksDto Links, DateTimeOffset CreatedAt);
+public sealed record PublicHouseDto(
+    Guid Id,
+    string Name,
+    string Slug,
+    string? Description,
+    string? LogoUrl,
+    int ComicCount,
+    HouseLinksDto Links,
+    DateTimeOffset CreatedAt,
+    string? CoverUrl = null,
+    string? Tagline = null,
+    string? ContactEmail = null,
+    int? FoundedYear = null,
+    bool Recruiting = false,
+    string? RecruitmentInfo = null,
+    int ChapterCount = 0);
 
-public sealed record HouseLinksDto(string? Facebook, string? Discord, string? Website);
+public sealed record HouseLinksDto(string? Facebook, string? Discord, string? Website, string? Tiktok = null, string? Youtube = null, string? Donate = null)
+{
+    public static HouseLinksDto From(Domain.Tenancy.HouseLinks l) => new(l.Facebook, l.Discord, l.Website, l.Tiktok, l.Youtube, l.Donate);
+}
 
 public sealed record TagWithCountDto(Guid Id, string Name, string Slug, int ComicCount);
 
@@ -202,3 +220,5 @@ public sealed record HouseDashboardDto(
     long StorageBytes,
     int MemberCount,
     IReadOnlyList<ProcessingJobListItem> RecentJobs);
+
+public sealed record VisibleChapterInfo(Guid ChapterId, Guid ComicId, Guid HouseId, int PageCount);

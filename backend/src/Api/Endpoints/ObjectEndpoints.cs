@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using ComicPlatform.Application.Abstractions;
+using ComicPlatform.Application.Settings;
 using ComicPlatform.Domain.Catalog;
 using ComicPlatform.Infrastructure.Configuration;
 using ComicPlatform.Infrastructure.Persistence;
@@ -74,6 +75,8 @@ public static class ObjectEndpoints
             .AnyAsync(p => p.StorageKey == key && p.Status == PackageStatus.Published, ct),
         ObjectKind.Cover => await db.Comics.IgnoreQueryFilters([QueryFilters.Tenant]).AnyAsync(c => c.CoverKey == key, ct),
         ObjectKind.Logo => await db.TranslationHouses.AnyAsync(h => h.LogoKey == key, ct),
+        ObjectKind.HouseCover => await db.TranslationHouses.AnyAsync(h => h.CoverKey == key, ct),
+        ObjectKind.Ad => await AdsService.ReferencesAsync(db, key, ct),
         _ => false,
     };
 

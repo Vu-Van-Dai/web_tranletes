@@ -1,6 +1,8 @@
 using ComicPlatform.Application.Abstractions;
-using ComicPlatform.Application.Library;
+using ComicPlatform.Application.Settings;
+using ComicPlatform.Application.Analytics;
 using ComicPlatform.Application.Publishing;
+using ComicPlatform.Domain.Analytics;
 using ComicPlatform.Domain.Catalog;
 using ComicPlatform.Domain.Publishing;
 using ComicPlatform.Infrastructure.Configuration;
@@ -96,7 +98,7 @@ public sealed class ProcessingHostedService(
         var now = clock.GetUtcNow();
         foreach (var job in interrupted)
         {
-            if (job.Attempts < ProcessingJob.MaxAttempts && uploads.Exists(job.UploadPath))
+            if (job.Attempts < ProcessingJob.MaxAttempts && uploads.Exists(job.UploadPath) && job.ExtraPages.All(e => uploads.Exists(e.Path)))
             {
                 job.Requeue(now);
                 logger.LogWarning("Re-queued interrupted job {JobId} (attempt {Attempt})", job.Id, job.Attempts);
@@ -242,6 +244,8 @@ public sealed class StorageTaskProcessor(
         {
             ObjectKind.Cover => await db.Comics.IgnoreQueryFilters([QueryFilters.Tenant]).AnyAsync(c => c.CoverKey == key, ct),
             ObjectKind.Logo => await db.TranslationHouses.AnyAsync(h => h.LogoKey == key, ct),
+            ObjectKind.HouseCover => await db.TranslationHouses.AnyAsync(h => h.CoverKey == key, ct),
+            ObjectKind.Ad => await AdsService.ReferencesAsync(db, key, ct),
             _ => await db.ChapterPackages.IgnoreQueryFilters([QueryFilters.Tenant]).AnyAsync(p => p.StorageKey == key && p.Status == PackageStatus.Published, ct),
         };
     }
@@ -301,10 +305,11 @@ public sealed class JanitorService(
 
         // 1) Uploads: keep files of active jobs and of recently failed jobs (retry window).
         var retryCutoff = now - settings.UploadRetention;
-        var keep = (await db.ProcessingJobs.IgnoreQueryFilters([QueryFilters.Tenant])
-                .Where(j => j.Status == JobStatus.Queued || j.Status == JobStatus.Running || (j.Status == JobStatus.Failed && j.FinishedAt > retryCutoff))
-                .Select(j => j.UploadPath)
-                .ToListAsync(ct))
+        var kept = await db.ProcessingJobs.IgnoreQueryFilters([QueryFilters.Tenant])
+            .Where(j => j.Status == JobStatus.Queued || j.Status == JobStatus.Running || (j.Status == JobStatus.Failed && j.FinishedAt > retryCutoff))
+            .Select(j => new { j.UploadPath, j.ExtraPages })
+            .ToListAsync(ct);
+        var keep = kept.SelectMany(j => j.ExtraPages.Select(e => e.Path).Prepend(j.UploadPath))
             .Select(Path.GetFullPath)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
@@ -338,7 +343,11 @@ public sealed class JanitorService(
             }
         }
 
-        // 3) Hard-delete comics soft-deleted longer than the retention period.
+        // 3) View receipts only de-duplicate within a reporting day; keep two days of margin.
+        var receiptCutoff = ReportingDay.From(now).AddDays(-2);
+        await db.ViewReceipts.Where(r => r.Day < receiptCutoff).ExecuteDeleteAsync(ct);
+
+        // 4) Hard-delete comics soft-deleted longer than the retention period.
         var deleteCutoff = now - settings.DeletedComicRetention;
         var expired = await db.Comics.IgnoreQueryFilters()
             .Where(c => c.DeletedAt != null && c.DeletedAt < deleteCutoff)
@@ -386,8 +395,12 @@ public sealed class JanitorService(
     }
 }
 
-/// <summary>Flushes aggregated view counts every minute with a single batched upsert.</summary>
-public sealed class ViewFlushService(ViewCounter counter, NpgsqlDataSource dataSource, ILogger<ViewFlushService> logger) : BackgroundService
+/// <summary>
+/// Flushes verified views every minute. One statement records the daily receipts (de-duplication that
+/// survives restarts), credits only the newly receipted views to the chapter ledger at the current revenue
+/// rate, and feeds the per-comic counters used by the rankings.
+/// </summary>
+public sealed class ViewFlushService(ViewCounter counter, NpgsqlDataSource dataSource, TimeProvider clock, ILogger<ViewFlushService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -408,30 +421,106 @@ public sealed class ViewFlushService(ViewCounter counter, NpgsqlDataSource dataS
 
     public async Task FlushAsync(CancellationToken ct)
     {
-        // One snapshot so ids/days/views stay aligned even if a late Record() touches the drained map.
-        var drained = counter.Drain().ToArray();
-        if (drained.Length == 0)
+        var batch = counter.Drain(clock.GetUtcNow());
+        if (batch.IsEmpty)
         {
             return;
         }
 
         try
         {
-            await using var cmd = dataSource.CreateCommand("""
-                INSERT INTO comic_view_daily (comic_id, day, views)
-                SELECT u.comic_id, u.day, u.views
-                FROM unnest(@ids, @days, @views) AS u(comic_id, day, views)
-                WHERE EXISTS (SELECT 1 FROM comics c WHERE c.id = u.comic_id)
-                ON CONFLICT (comic_id, day) DO UPDATE SET views = comic_view_daily.views + EXCLUDED.views
-                """);
-            cmd.Parameters.Add(new NpgsqlParameter<Guid[]>("ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid) { TypedValue = drained.Select(k => k.Key.ComicId).ToArray() });
-            cmd.Parameters.Add(new NpgsqlParameter<DateOnly[]>("days", NpgsqlDbType.Array | NpgsqlDbType.Date) { TypedValue = drained.Select(k => k.Key.Day).ToArray() });
-            cmd.Parameters.Add(new NpgsqlParameter<long[]>("views", NpgsqlDbType.Array | NpgsqlDbType.Bigint) { TypedValue = drained.Select(k => k.Value).ToArray() });
-            await cmd.ExecuteNonQueryAsync(ct);
+            await using var connection = await dataSource.OpenConnectionAsync(ct);
+            await using var tx = await connection.BeginTransactionAsync(ct);
+            if (batch.Accepted.Length > 0)
+            {
+                await FlushAcceptedAsync(connection, tx, batch.Accepted, ct);
+            }
+
+            if (batch.Suspicious.Length > 0)
+            {
+                await using var cmd = new NpgsqlCommand("""
+                    INSERT INTO chapter_view_daily (chapter_id, day, comic_id, translation_house_id, views, suspicious_views, revenue)
+                    SELECT u.chapter_id, u.day, u.comic_id, u.house_id, 0, u.n, 0
+                    FROM unnest(@chapters, @comics, @houses, @days, @counts) AS u(chapter_id, comic_id, house_id, day, n)
+                    ON CONFLICT (chapter_id, day) DO UPDATE SET suspicious_views = chapter_view_daily.suspicious_views + EXCLUDED.suspicious_views
+                    """, connection, tx);
+                cmd.Parameters.Add(Uuids("chapters", batch.Suspicious.Select(k => k.Key.ChapterId)));
+                cmd.Parameters.Add(Uuids("comics", batch.Suspicious.Select(k => k.Key.ComicId)));
+                cmd.Parameters.Add(Uuids("houses", batch.Suspicious.Select(k => k.Key.HouseId)));
+                cmd.Parameters.Add(Days("days", batch.Suspicious.Select(k => k.Key.Day)));
+                cmd.Parameters.Add(Longs("counts", batch.Suspicious.Select(k => k.Value)));
+                await cmd.ExecuteNonQueryAsync(ct);
+            }
+
+            if (batch.Rejections.Length > 0)
+            {
+                await using var cmd = new NpgsqlCommand("""
+                    INSERT INTO view_rejection_daily (day, reason, count)
+                    SELECT u.day, u.reason, u.n FROM unnest(@days, @reasons, @counts) AS u(day, reason, n)
+                    ON CONFLICT (day, reason) DO UPDATE SET count = view_rejection_daily.count + EXCLUDED.count
+                    """, connection, tx);
+                cmd.Parameters.Add(Days("days", batch.Rejections.Select(k => k.Key.Day)));
+                cmd.Parameters.Add(new NpgsqlParameter<string[]>("reasons", NpgsqlDbType.Array | NpgsqlDbType.Text) { TypedValue = batch.Rejections.Select(k => k.Key.Reason).ToArray() });
+                cmd.Parameters.Add(Longs("counts", batch.Rejections.Select(k => k.Value)));
+                await cmd.ExecuteNonQueryAsync(ct);
+            }
+
+            await tx.CommitAsync(ct);
         }
         catch (Exception ex) when (ex is NpgsqlException or InvalidOperationException)
         {
-            logger.LogWarning(ex, "Could not flush {Count} view counters", drained.Length);
+            logger.LogWarning(ex, "Could not flush {Accepted} verified views", batch.Accepted.Length);
         }
     }
+
+    private static async Task FlushAcceptedAsync(NpgsqlConnection connection, NpgsqlTransaction tx, AcceptedView[] views, CancellationToken ct)
+    {
+        await using var cmd = new NpgsqlCommand("""
+            WITH input AS (
+                SELECT * FROM unnest(@chapters, @comics, @houses, @days, @visitors) AS u(chapter_id, comic_id, house_id, day, visitor_hash)
+            ),
+            rate AS (
+                SELECT COALESCE((SELECT (value #>> '{}')::numeric FROM system_settings WHERE key = 'revenue_per_thousand_views'), 0) AS per_thousand
+            ),
+            receipted AS (
+                INSERT INTO view_receipts (chapter_id, day, visitor_hash, created_at)
+                SELECT DISTINCT chapter_id, day, visitor_hash, now() FROM input
+                ON CONFLICT DO NOTHING
+                RETURNING chapter_id, day
+            ),
+            counted AS (
+                SELECT r.chapter_id, r.day, m.comic_id, m.house_id, count(*) AS views
+                FROM receipted r
+                JOIN (SELECT DISTINCT chapter_id, comic_id, house_id FROM input) m ON m.chapter_id = r.chapter_id
+                GROUP BY r.chapter_id, r.day, m.comic_id, m.house_id
+            ),
+            ledger AS (
+                INSERT INTO chapter_view_daily (chapter_id, day, comic_id, translation_house_id, views, suspicious_views, revenue)
+                SELECT c.chapter_id, c.day, c.comic_id, c.house_id, c.views, 0, round(c.views * rate.per_thousand / 1000, 4)
+                FROM counted c CROSS JOIN rate
+                ON CONFLICT (chapter_id, day) DO UPDATE SET views = chapter_view_daily.views + EXCLUDED.views,
+                                                            revenue = chapter_view_daily.revenue + EXCLUDED.revenue
+            )
+            INSERT INTO comic_view_daily (comic_id, day, views)
+            SELECT c.comic_id, c.day, sum(c.views) FROM counted c
+            WHERE EXISTS (SELECT 1 FROM comics x WHERE x.id = c.comic_id)
+            GROUP BY c.comic_id, c.day
+            ON CONFLICT (comic_id, day) DO UPDATE SET views = comic_view_daily.views + EXCLUDED.views
+            """, connection, tx);
+        cmd.Parameters.Add(Uuids("chapters", views.Select(v => v.ChapterId)));
+        cmd.Parameters.Add(Uuids("comics", views.Select(v => v.ComicId)));
+        cmd.Parameters.Add(Uuids("houses", views.Select(v => v.HouseId)));
+        cmd.Parameters.Add(Days("days", views.Select(v => v.Day)));
+        cmd.Parameters.Add(new NpgsqlParameter<string[]>("visitors", NpgsqlDbType.Array | NpgsqlDbType.Text) { TypedValue = views.Select(v => v.VisitorHash).ToArray() });
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    private static NpgsqlParameter<Guid[]> Uuids(string name, IEnumerable<Guid> values) =>
+        new(name, NpgsqlDbType.Array | NpgsqlDbType.Uuid) { TypedValue = values.ToArray() };
+
+    private static NpgsqlParameter<DateOnly[]> Days(string name, IEnumerable<DateOnly> values) =>
+        new(name, NpgsqlDbType.Array | NpgsqlDbType.Date) { TypedValue = values.ToArray() };
+
+    private static NpgsqlParameter<long[]> Longs(string name, IEnumerable<long> values) =>
+        new(name, NpgsqlDbType.Array | NpgsqlDbType.Bigint) { TypedValue = values.ToArray() };
 }

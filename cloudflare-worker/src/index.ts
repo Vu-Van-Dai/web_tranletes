@@ -4,6 +4,8 @@
  *   GET img.<domain>/comics/{comicId}/chapters/{chapterId}/v{n}.pkg
  *   GET img.<domain>/comics/{comicId}/cover/{hash16}.webp
  *   GET img.<domain>/houses/{houseId}/logo/{hash16}.webp
+ *   GET img.<domain>/houses/{houseId}/cover/{hash16}.webp
+ *   GET img.<domain>/ads/{hash16}.webp
  *
  * Flow: edge cache (caches.default) → R2 → Oracle origin fallback.
  * Every URL is versioned or content-hashed, so responses are immutable and cached for a year.
@@ -40,7 +42,7 @@ export interface ContextLike {
 
 const GUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const KEY_PATTERN = new RegExp(
-  `^/((?:comics/${GUID}/chapters/${GUID}/v[1-9][0-9]{0,5}\\.pkg)|(?:comics/${GUID}/cover/[0-9a-f]{16}\\.webp)|(?:houses/${GUID}/logo/[0-9a-f]{16}\\.webp))$`,
+  `^/((?:comics/${GUID}/chapters/${GUID}/v[1-9][0-9]{0,5}\\.pkg)|(?:comics/${GUID}/cover/[0-9a-f]{16}\\.webp)|(?:houses/${GUID}/(?:logo|cover)/[0-9a-f]{16}\\.webp)|(?:ads/[0-9a-f]{16}\\.webp))$`,
 );
 
 export const IMMUTABLE = 'public, max-age=31536000, immutable';

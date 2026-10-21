@@ -1,5 +1,6 @@
 using ComicPlatform.Api.Infrastructure;
 using ComicPlatform.Application.Abstractions;
+using ComicPlatform.Application.Analytics;
 using ComicPlatform.Application.Catalog;
 using ComicPlatform.Application.Common;
 using ComicPlatform.Application.Library;
@@ -18,10 +19,10 @@ public static class PublicEndpoints
     {
         var pub = api.MapGroup("").WithTags("Public").RequireRateLimiting(RateLimitPolicies.Public);
 
-        pub.MapGet("/site", async (SettingsService s, CancellationToken ct) =>
+        pub.MapGet("/site", async (SettingsService s, AdsService ads, CancellationToken ct) =>
         {
             var settings = await s.GetAsync(ct);
-            return Results.Ok(new { settings.RegistrationEnabled, settings.Announcement });
+            return Results.Ok(new { settings.RegistrationEnabled, settings.Announcement, Ads = await ads.GetPublicAsync(ct) });
         }).CachePublic(60);
 
         pub.MapGet("/comics", async (string? q, string? tag, string? house, string? status, string? sort, int? page, int? pageSize,
@@ -42,22 +43,23 @@ public static class PublicEndpoints
         pub.MapGet("/rankings", async (string? period, LibraryService s, CancellationToken ct) =>
             Results.Ok(await s.RankingsAsync(period, ct))).CachePublic(120);
 
-        // View beacon: aggregated in memory, deduplicated per client + chapter, flushed in batches.
-        pub.MapPost("/chapters/{id:guid}/view", async (Guid id, HttpContext http, PublicCatalogService s, ViewCounter counter, ICurrentUser user,
+        // Verified views: the reader asks for a signed ticket when it opens a chapter and sends it back once the
+        // pages were actually read; only views passing every check are counted (and paid). Always 204.
+        pub.MapPost("/chapters/{id:guid}/view-ticket", async (Guid id, ViewTicketRequest? request, HttpContext http, ViewService s, ICurrentUser user,
+            WebSettings web, CancellationToken ct) =>
+            Results.Ok(await s.IssueTicketAsync(id, request?.HumanToken, Visitor(http, user, web), ct)));
+        pub.MapPost("/chapters/{id:guid}/view", async (Guid id, ViewReportRequest? request, HttpContext http, ViewService s, ICurrentUser user,
             WebSettings web, CancellationToken ct) =>
         {
-            var comicId = await s.VisibleChapterComicIdAsync(id, ct);
-            if (comicId is null)
-            {
-                throw Errors.NotFound("Chương");
-            }
-
-            counter.Record(comicId.Value, id, user.UserId?.ToString("N") ?? ClientIp.Resolve(http, web));
+            await s.RecordAsync(id, request ?? new ViewReportRequest(null, 0, 0), Visitor(http, user, web), ct);
             return Results.NoContent();
         });
 
         return api;
     }
+
+    private static ViewVisitor Visitor(HttpContext http, ICurrentUser user, WebSettings web) =>
+        new(user.UserId, ClientIp.Resolve(http, web), http.Request.Headers.UserAgent.ToString());
 
     private static RouteHandlerBuilder CachePublic(this RouteHandlerBuilder builder, int seconds) =>
         builder.AddEndpointFilter(async (ctx, next) =>
@@ -66,6 +68,8 @@ public static class PublicEndpoints
             return await next(ctx);
         });
 }
+
+public sealed record ViewTicketRequest(string? HumanToken);
 
 public static class LibraryEndpoints
 {

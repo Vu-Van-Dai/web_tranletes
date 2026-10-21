@@ -46,15 +46,59 @@ public sealed class PublishingService(
         }
     }
 
-    public async Task<JobSummary> AcceptUploadAsync(Guid chapterId, Stream content, string? fileName, CancellationToken ct)
-    {
-        var chapter = await guard.GetChapterAsync(chapterId, ct);
-        await EnsureNoActiveJobAsync(chapterId, ct);
-        EnsureQueueAccepting();
+    /// <summary>Multipart field names of the optional promotional images (sent before the archive).</summary>
+    public static readonly IReadOnlySet<string> ExtraPageFields = new HashSet<string>(StringComparer.Ordinal) { "promoStart", "promoEnd" };
 
-        var uploadId = Guid.CreateVersion7();
-        logger.LogInformation("Upload started for chapter {ChapterId} by user {UserId}", chapterId, tenant.UserId);
-        var saved = await uploads.SaveAsync(uploadId, content, options.MaxUploadSize, ct);
+    /// <summary>Saves one promotional image of an upload to the temp area (validated by magic bytes).</summary>
+    public async Task<ExtraPageFile> SaveExtraPageAsync(Guid uploadId, int index, string field, Stream content, string? fileName, long maxBytes, CancellationToken ct)
+    {
+        var saved = await uploads.SaveImageAsync(uploadId, index, content, maxBytes, ct);
+        return new ExtraPageFile
+        {
+            Path = saved.Path,
+            Size = saved.Size,
+            FileName = SafeFileName(fileName),
+            Position = field == "promoEnd" ? ExtraPagePosition.End : ExtraPagePosition.Start,
+        };
+    }
+
+    public void DiscardExtraPages(IEnumerable<ExtraPageFile> extras)
+    {
+        foreach (var extra in extras)
+        {
+            uploads.Delete(extra.Path);
+        }
+    }
+
+    public async Task<JobSummary> AcceptUploadAsync(Guid chapterId, Stream content, string? fileName, CancellationToken ct) =>
+        await AcceptUploadAsync(chapterId, content, fileName, [], ct);
+
+    /// <summary>
+    /// Accepts the archive of a chapter. Once called, this method owns <paramref name="extras"/>: their files are
+    /// deleted on any failure before the job is committed, and belong to the job afterwards.
+    /// </summary>
+    public async Task<JobSummary> AcceptUploadAsync(Guid chapterId, Stream content, string? fileName, IReadOnlyList<ExtraPageFile> extras, CancellationToken ct)
+    {
+        Chapter chapter;
+        SavedUpload saved;
+        try
+        {
+            chapter = await guard.GetChapterAsync(chapterId, ct);
+            await EnsureNoActiveJobAsync(chapterId, ct);
+            EnsureQueueAccepting();
+            if (extras.Count > ExtraPageFile.MaxPerUpload)
+            {
+                throw Errors.BadRequest("too_many_extra_pages", $"Chỉ được kèm tối đa {ExtraPageFile.MaxPerUpload} ảnh quảng bá cho mỗi chương.");
+            }
+
+            logger.LogInformation("Upload started for chapter {ChapterId} by user {UserId}", chapterId, tenant.UserId);
+            saved = await uploads.SaveAsync(Guid.CreateVersion7(), content, options.MaxUploadSize, ct);
+        }
+        catch
+        {
+            DiscardExtraPages(extras);
+            throw;
+        }
 
         ProcessingJob job;
         try
@@ -62,15 +106,16 @@ public sealed class PublishingService(
             var now = clock.GetUtcNow();
             var version = chapter.BeginProcessing(now);
             var package = new ChapterPackage(chapter.Id, version, ObjectKeys.Package(chapter.ComicId, chapter.Id, version), now);
-            job = new ProcessingJob(chapter.Id, package.Id, tenant.UserId, saved.Path, saved.Size, SafeFileName(fileName), now);
+            job = new ProcessingJob(chapter.Id, package.Id, tenant.UserId, saved.Path, saved.Size, SafeFileName(fileName), now, extras);
             db.ChapterPackages.Add(package);
             db.ProcessingJobs.Add(job);
-            audit.Add(AuditActions.ChapterUploaded, "chapter", chapter.Id, tenant.HouseId, new { version, saved.Size });
+            audit.Add(AuditActions.ChapterUploaded, "chapter", chapter.Id, tenant.HouseId, new { version, saved.Size, extraPages = extras.Count });
             await db.SaveChangesAsync(ct);
         }
         catch
         {
             uploads.Delete(saved.Path);
+            DiscardExtraPages(extras);
             throw;
         }
 
@@ -169,7 +214,7 @@ public sealed class PublishingService(
             throw Errors.Conflict("nothing_to_retry", "Không có lần xử lý thất bại nào để thử lại.");
         }
 
-        if (!uploads.Exists(job.UploadPath))
+        if (!uploads.Exists(job.UploadPath) || job.ExtraPages.Any(e => !uploads.Exists(e.Path)))
         {
             throw Errors.Conflict("upload_expired", "Tệp tải lên đã hết hạn lưu trữ, vui lòng tải chương lên lại.");
         }

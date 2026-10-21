@@ -70,6 +70,10 @@ public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             ["OUTBOX_INTERVAL"] = "00:00:01",
             ["MAX_UPLOAD_SIZE"] = "50MB",
             ["MAX_PAGES_PER_CHAPTER"] = "50",
+            // Verified views: 1 s of reading is enough in tests (production default: 1.5 s/page, 10–60 s).
+            ["VIEW_SECONDS_PER_PAGE"] = "0",
+            ["VIEW_MIN_SECONDS"] = "1",
+            ["VIEW_MAX_SECONDS"] = "1",
             // Opt-in host logs for debugging test failures.
             ["LOG_DIRECTORY"] = Environment.GetEnvironmentVariable("TEST_LOG_DIRECTORY"),
         };

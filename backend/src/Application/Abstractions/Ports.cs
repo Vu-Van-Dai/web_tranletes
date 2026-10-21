@@ -112,6 +112,7 @@ public interface IStoragePaths
     string ComicDir(Guid comicId);
     string AssetPath(string objectKey);
     string UploadPath(Guid jobId);
+    string ExtraUploadPath(Guid uploadId, int index);
     string WorkDir(Guid jobId);
 }
 
@@ -123,6 +124,10 @@ public static class ObjectKeys
     public static string Cover(Guid comicId, string hash16) => $"comics/{comicId:D}/cover/{hash16}.webp";
 
     public static string Logo(Guid houseId, string hash16) => $"houses/{houseId:D}/logo/{hash16}.webp";
+
+    public static string HouseCover(Guid houseId, string hash16) => $"houses/{houseId:D}/cover/{hash16}.webp";
+
+    public static string Ad(string hash16) => $"ads/{hash16}.webp";
 }
 
 public interface IProcessingQueue
@@ -140,11 +145,13 @@ public interface IDistributedLock
 
 public sealed record StoredImage(string Key, int Width, int Height, long Size);
 
-/// <summary>Cover / logo pipeline: validate → WebP thumbnail → block volume → object store.</summary>
+/// <summary>Cover / logo / banner pipeline: validate → WebP thumbnail → block volume → object store.</summary>
 public interface IMediaService
 {
     Task<StoredImage> StoreCoverAsync(Guid comicId, Stream input, CancellationToken ct);
     Task<StoredImage> StoreLogoAsync(Guid houseId, Stream input, CancellationToken ct);
+    Task<StoredImage> StoreHouseCoverAsync(Guid houseId, Stream input, CancellationToken ct);
+    Task<StoredImage> StoreAdImageAsync(Stream input, CancellationToken ct);
 }
 
 /// <summary>Deletes block-volume files of chapters/comics (best effort, logged).</summary>
@@ -162,6 +169,9 @@ public sealed record SavedUpload(string Path, long Size);
 public interface IUploadStore
 {
     Task<SavedUpload> SaveAsync(Guid uploadId, Stream content, long maxBytes, CancellationToken ct);
+
+    /// <summary>Saves an extra page image (JPEG/PNG/static WebP, checked by magic bytes) next to an upload.</summary>
+    Task<SavedUpload> SaveImageAsync(Guid uploadId, int index, Stream content, long maxBytes, CancellationToken ct);
     bool Exists(string path);
     void Delete(string path);
 }

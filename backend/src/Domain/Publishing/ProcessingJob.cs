@@ -21,6 +21,26 @@ public enum JobStage
     Completed = 5,
 }
 
+public enum ExtraPagePosition
+{
+    Start = 0,
+    End = 1,
+}
+
+/// <summary>
+/// An image uploaded next to the chapter archive (e.g. the house's promotional poster) that the pipeline
+/// inserts before or after the archive pages. Stored as JSON on the job; the file lives in the temp area.
+/// </summary>
+public sealed class ExtraPageFile
+{
+    public const int MaxPerUpload = 2;
+
+    public string Path { get; set; } = null!;
+    public ExtraPagePosition Position { get; set; }
+    public string? FileName { get; set; }
+    public long Size { get; set; }
+}
+
 public sealed class ProcessingJob
 {
     public const int MaxAttempts = 3;
@@ -29,7 +49,8 @@ public sealed class ProcessingJob
     {
     }
 
-    public ProcessingJob(Guid chapterId, Guid packageId, Guid requestedByUserId, string uploadPath, long uploadSize, string? originalFileName, DateTimeOffset now)
+    public ProcessingJob(Guid chapterId, Guid packageId, Guid requestedByUserId, string uploadPath, long uploadSize, string? originalFileName, DateTimeOffset now,
+        IReadOnlyList<ExtraPageFile>? extraPages = null)
     {
         Id = Guid.CreateVersion7();
         ChapterId = chapterId;
@@ -38,6 +59,7 @@ public sealed class ProcessingJob
         UploadPath = uploadPath;
         UploadSize = uploadSize;
         OriginalFileName = originalFileName;
+        ExtraPages = extraPages?.ToList() ?? [];
         Status = JobStatus.Queued;
         Stage = JobStage.Queued;
         CreatedAt = now;
@@ -57,6 +79,10 @@ public sealed class ProcessingJob
     public string UploadPath { get; private set; } = null!;
     public long UploadSize { get; private set; }
     public string? OriginalFileName { get; private set; }
+
+    /// <summary>Promotional images inserted at the start/end of the chapter (at most <see cref="ExtraPageFile.MaxPerUpload"/>).</summary>
+    public List<ExtraPageFile> ExtraPages { get; private set; } = [];
+
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset? StartedAt { get; private set; }
     public DateTimeOffset? HeartbeatAt { get; private set; }
