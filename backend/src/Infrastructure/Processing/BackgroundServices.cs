@@ -305,10 +305,14 @@ public sealed class JanitorService(
 
         // 1) Uploads: keep files of active jobs and of recently failed jobs (retry window).
         var retryCutoff = now - settings.UploadRetention;
-        var kept = await db.ProcessingJobs.IgnoreQueryFilters([QueryFilters.Tenant])
-            .Where(j => j.Status == JobStatus.Queued || j.Status == JobStatus.Running || (j.Status == JobStatus.Failed && j.FinishedAt > retryCutoff))
-            .Select(j => new { j.UploadPath, j.ExtraPages })
-            .ToListAsync(ct);
+        var kept = await db.ProcessingJobs
+    .IgnoreQueryFilters([QueryFilters.Tenant])
+    .Where(j => j.Status == JobStatus.Queued
+        || j.Status == JobStatus.Running
+        || (j.Status == JobStatus.Failed && j.FinishedAt > retryCutoff))
+    .AsNoTracking()
+    .Select(j => new { j.UploadPath, j.ExtraPages })
+    .ToListAsync(ct);
         var keep = kept.SelectMany(j => j.ExtraPages.Select(e => e.Path).Prepend(j.UploadPath))
             .Select(Path.GetFullPath)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
