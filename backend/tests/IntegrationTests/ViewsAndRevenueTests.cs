@@ -211,12 +211,15 @@ public class PromoPagesAndHouseProfileTests(ApiFactory factory) : IClassFixture<
                 new { id = "banner-1", name = "Banner đầu trang", enabled = true, format = "banner", imageUrl = "https://ads.example/b.webp", targetUrl = "https://shop.example", slots = new[] { "home_top", "reader_bottom" } },
                 new { id = "popup-1", name = "Pop-up bắt buộc xem", enabled = true, format = "popup", html = "<a href='https://x.example'>Ad</a>", closeMode = "countdown", countdownSeconds = 5, pages = new[] { "reader" }, frequencyMinutes = 30 },
                 new { id = "tab-1", name = "Tab mới", enabled = false, format = "newtab", targetUrl = "https://x.example" },
+                new { id = "tab-2", name = "Tab khi bấm chương", enabled = true, format = "newtab", targetUrl = "https://x.example", trigger = "content", frequencyMinutes = 10 },
             },
         };
         await admin.PutAsync("/api/admin/ads", config);
         var site = await _s.Anonymous().GetAsync("/api/site");
         var units = site.GetProperty("ads").GetProperty("units").EnumerateArray().ToList();
-        Assert.Equal(["banner-1", "popup-1"], units.Select(u => u.Str("id")));
+        Assert.Equal(["banner-1", "popup-1", "tab-2"], units.Select(u => u.Str("id")));
+        Assert.Equal("content", units[2].Str("trigger"));
+        Assert.Equal(JsonValueKind.Null, units[0].GetProperty("trigger").ValueKind);
 
         var invalid = new { enabled = true, units = new object[] { new { id = "x", name = "Sai", enabled = true, format = "popup", imageUrl = "https://a.example/a.webp", targetUrl = "https://a.example", closeMode = "countdown", countdownSeconds = 500 } } };
         await admin.JsonAsync(HttpMethod.Put, "/api/admin/ads", invalid, HttpStatusCode.BadRequest);

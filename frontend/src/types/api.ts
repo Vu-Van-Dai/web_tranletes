@@ -192,6 +192,8 @@ export interface AdUnit {
   countdownSeconds: number | null;
   delaySeconds: number | null;
   frequencyMinutes: number | null;
+  /** New-tab ads: "any" = next click anywhere, "content" = clicks on stories, chapters and action buttons. */
+  trigger?: 'any' | 'content' | null;
 }
 
 export interface AdsConfig {

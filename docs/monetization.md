@@ -11,7 +11,7 @@
 |---|---|---|
 | **Banner trong trang** (`banner`) | Inline block at the chosen positions: under the header on every page, home top/middle, browse, comic page, chapter list, house page, reader top / end of chapter. Several banners in one position rotate. | Direct deals (upload an image → stored as WebP, add the target link) or a network's banner HTML |
 | **Pop-up** (`popup`) | Overlay panel on the chosen pages. *Có nút đóng ngay*: closable at once. *Bắt buộc xem rồi mới đóng*: the close button appears only after 3–60 s of the tab being visible. Optional delay and frequency cap (per browser). | Image + link or network HTML |
-| **Mở tab mới khi bấm** (`newtab`) | The visitor's next click opens the link in a new tab (browsers block pop-ups that are not triggered by a click). Frequency cap per browser. | Your own link / a network's "direct link" |
+| **Mở tab mới khi bấm** (`newtab`) | The ad link opens in a separate tab when the visitor clicks; the link they clicked still opens normally in the current tab (browsers block tabs not triggered by a click). *Mở khi*: the first click anywhere, or **every click on a story, a chapter, or the read / follow / previous / next chapter buttons**. Frequency cap per browser (0 = once per page view, i.e. on every chapter click). | Your own link / a network's "direct link" (smartlink) |
 | **Mã của mạng quảng cáo** (`script`) | Pastes the network's code into the public pages (popunder, social bar, in-page push, auto ads). | Adsterra, Monetag, PropellerAds, … |
 
 Where ads appear: home, browse/search/genre, comic pages, the reader, house pages, library and other public pages —
@@ -20,6 +20,11 @@ for **every** visitor, including members of translation houses reading with thei
 network script was injected earlier in the same tab, entering those areas forces a reload so it stops running.
 
 Notes:
+
+- New-tab ads never replace the page the reader asked for (no "tab-under" redirects — Chrome blocks those and can
+  flag the whole site as abusive). Story/chapter links and elements marked `data-ad-trigger` count as content clicks.
+- Google AdSense treats ads that open on normal navigation clicks as a policy risk; prefer another network for
+  new-tab ads, and keep them off while the AdSense review is pending.
 
 - Banner/pop-up HTML runs in a sandboxed iframe (no access to the page or the reader's session). The "script" format runs
   in the page itself — paste only code from networks you trust.

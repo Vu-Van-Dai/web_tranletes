@@ -17,7 +17,7 @@ const formatLabel: Record<AdFormat, string> = {
 const formatHint: Record<AdFormat, string> = {
   banner: 'Hiển thị tại các vị trí đã chọn. Dùng ảnh + liên kết (quảng cáo trực tiếp) hoặc mã HTML banner của mạng quảng cáo.',
   popup: 'Bảng nổi che trang. Có thể cho đóng ngay, hoặc bắt buộc xem đủ số giây mới hiện nút đóng.',
-  newtab: 'Lần bấm chuột tiếp theo của người đọc sẽ mở liên kết trong tab mới (trình duyệt chặn nếu không có thao tác bấm).',
+  newtab: 'Khi người đọc bấm, liên kết quảng cáo mở trong tab mới; trang họ bấm vẫn mở bình thường ở tab hiện tại. Chọn mở ở lần bấm đầu tiên, hoặc mỗi khi bấm vào truyện / chương / nút đọc, theo dõi.',
   script: 'Dán nguyên mã của mạng quảng cáo (popunder, social bar, auto ads…). Mã chạy trực tiếp trên trang công khai — chỉ dán mã từ nguồn tin cậy.',
 };
 
@@ -63,9 +63,10 @@ const emptyUnit = (): AdUnit => ({
 function describe(unit: AdUnit): string {
   if (unit.format === 'banner') return (unit.slots ?? []).map((s) => slotLabel[s]).join(' · ');
   const where = unit.pages && unit.pages.length > 0 ? unit.pages.map((p) => pageLabel[p]).join(', ') : 'Mọi trang công khai';
+  const trigger = unit.format === 'newtab' ? (unit.trigger === 'content' ? ' · khi bấm truyện/chương' : ' · lần bấm đầu tiên') : '';
   const freq = unit.format === 'script' ? '' : unit.frequencyMinutes ? ` · tối đa 1 lần / ${unit.frequencyMinutes} phút` : ' · mỗi lần mở trang';
   const close = unit.format === 'popup' ? (unit.closeMode === 'countdown' ? ` · bắt buộc xem ${unit.countdownSeconds}s` : ' · đóng ngay được') : '';
-  return where + close + freq;
+  return where + close + trigger + freq;
 }
 
 export function AdminAdsPage() {
@@ -240,7 +241,17 @@ function AdEditor({ unit, onCancel, onSave }: { unit: AdUnit; onCancel: () => vo
         )}
 
         {u.format === 'newtab' && (
-          <Field label="Liên kết mở trong tab mới" required>{(id) => <Input id={id} placeholder="https://" value={u.targetUrl ?? ''} onChange={(e) => set({ targetUrl: e.target.value || null })} />}</Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Liên kết mở trong tab mới" required>{(id) => <Input id={id} placeholder="https://" value={u.targetUrl ?? ''} onChange={(e) => set({ targetUrl: e.target.value || null })} />}</Field>
+            <Field label="Mở khi" hint="Trang người đọc bấm vẫn mở bình thường; quảng cáo mở ở tab riêng.">
+              {(id) => (
+                <Select id={id} value={u.trigger ?? 'any'} onChange={(e) => set({ trigger: e.target.value as 'any' | 'content' })} data-testid="ad-trigger">
+                  <option value="any">Lần bấm đầu tiên bất kỳ</option>
+                  <option value="content">Bấm vào truyện, chương, nút đọc / theo dõi</option>
+                </Select>
+              )}
+            </Field>
+          </div>
         )}
         {u.format === 'script' && (
           <Field label="Mã của mạng quảng cáo" required hint="Dán nguyên văn, kể cả thẻ <script>.">

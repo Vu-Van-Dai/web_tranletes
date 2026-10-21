@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isAdFreePath, pageGroupOf } from '@/features/ads/Ads';
+import { AD_TRIGGER_SELECTOR, isAdFreePath, pageGroupOf } from '@/features/ads/Ads';
 import { chapterNumberFromName } from '@/features/house/BulkUploadDialog';
 
 describe('ad placement', () => {
@@ -37,5 +37,23 @@ describe('bulk upload chapter numbers', () => {
     ['khong-co-so.zip', null],
   ])('%s → %s', (name, expected) => {
     expect(chapterNumberFromName(name)).toBe(expected);
+  });
+});
+
+describe('new-tab ad triggers', () => {
+  it('treats story links, chapter links and marked buttons as content clicks', () => {
+    document.body.innerHTML = `
+      <a id="story" href="/truyen/0193/ten"><span id="inner">Truyện</span></a>
+      <a id="chapter" href="/doc/0193">Chương 1</a>
+      <a id="browse" href="/truyen">Danh sách</a>
+      <button id="follow" data-ad-trigger>Theo dõi</button>
+      <button id="theme">Đổi nền</button>`;
+    const hit = (id: string) => document.getElementById(id)!.closest(AD_TRIGGER_SELECTOR) !== null;
+    expect(hit('story')).toBe(true);
+    expect(hit('inner')).toBe(true);
+    expect(hit('chapter')).toBe(true);
+    expect(hit('follow')).toBe(true);
+    expect(hit('browse')).toBe(false);
+    expect(hit('theme')).toBe(false);
   });
 });
