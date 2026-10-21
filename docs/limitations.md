@@ -18,6 +18,10 @@
   Jobs are durable in PostgreSQL; queued work survives restarts, view counts in the last minute may be lost on crash.
 - **SPA without SSR.** Search engines see a client-rendered app (titles are set per page, but no server rendering).
 - **Hotlinking.** Package/cover URLs are public and served with `Access-Control-Allow-Origin: *`.
+- **View counts are approximate on crash.** Verified views are aggregated in memory and flushed every minute; a crash
+  loses at most the last minute (under-counting only — payouts are never inflated).
+- **Ads relax the CSP.** `script-src`/`frame-src` allow any `https:` origin so ad networks can load; network code of
+  the "script" format runs on public pages (never in the workspace/admin, which reload ad-free).
 - **Not implemented (out of scope):** comments, error reports per chapter, notifications for followed comics,
   multi-file (non-archive) upload.
 

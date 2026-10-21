@@ -17,7 +17,10 @@ A user may belong to several houses. Permissions are flags on the membership.
 | House dashboard, comic/chapter lists, processing status | – | – | ✓ | ✓ | – |
 | View members | – | – | `viewMembers` | ✓ | – |
 | Add/edit/remove members | – | – | – | ✓ | – |
-| Edit house profile / logo | – | – | – | ✓ | – |
+| Edit house profile / logo / cover | – | – | – | ✓ | – |
+| See the house's verified views | – | – | ✓ | ✓ | ✓ |
+| See the house's revenue | – | – | – | ✓ | ✓ |
+| Configure ads, revenue rate; platform revenue report | – | – | – | – | ✓ |
 | Create/edit/delete comics, covers, tags | – | – | `manageComics` | ✓ | – |
 | Create/edit/delete chapters | – | – | `manageChapters` | ✓ | – |
 | Upload chapters, retry processing | – | – | `uploadChapters` | ✓ | – |

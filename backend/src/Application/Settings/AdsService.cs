@@ -147,7 +147,12 @@ public sealed partial class AdsService(IAppDbContext db, IMediaService media, IP
             v.Must(u.Id is not null && IdRegex().IsMatch(u.Id) && ids.Add(u.Id), f + ".id", "Mã quảng cáo không hợp lệ hoặc bị trùng.");
             v.Required(f + ".name", u.Name, "Tên quảng cáo").Length(f + ".name", u.Name, "Tên quảng cáo", 1, 100);
             v.Must(Formats.Contains(format), f + ".format", "Loại quảng cáo không hợp lệ.");
-            v.Url(f + ".imageUrl", u.ImageUrl, "Ảnh quảng cáo");
+            // Uploaded creatives may be served from a relative URL (PUBLIC_IMAGE_URL=/cdn in development).
+            if (u.ImageUrl is not { } image || !OwnAdImageRegex().IsMatch(image))
+            {
+                v.Url(f + ".imageUrl", u.ImageUrl, "Ảnh quảng cáo");
+            }
+
             v.Url(f + ".targetUrl", u.TargetUrl, "Liên kết đích");
             v.MaxLength(f + ".html", u.Html, "Mã quảng cáo", MaxHtmlLength);
 
@@ -205,4 +210,7 @@ public sealed partial class AdsService(IAppDbContext db, IMediaService media, IP
 
     [GeneratedRegex(@"ads/[0-9a-f]{16}\.webp")]
     private static partial Regex AdKeyRegex();
+
+    [GeneratedRegex(@"^/[A-Za-z0-9/_-]*/ads/[0-9a-f]{16}\.webp$")]
+    private static partial Regex OwnAdImageRegex();
 }

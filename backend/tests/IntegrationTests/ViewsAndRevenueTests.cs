@@ -225,6 +225,14 @@ public class PromoPagesAndHouseProfileTests(ApiFactory factory) : IClassFixture<
         using var uploaded = await admin.SendAsync(HttpMethod.Post, "/api/admin/ads/images", form);
         var url = JsonDocument.Parse(await uploaded.Content.ReadAsStringAsync()).RootElement.Str("url");
         Assert.Matches(@"^/cdn/ads/[0-9a-f]{16}\.webp$", url);
+        await admin.PutAsync("/api/admin/ads", new
+        {
+            enabled = true,
+            units = new object[] { new { id = "own-image", name = "Ảnh tự tải", enabled = true, format = "banner", imageUrl = url, targetUrl = "https://shop.example", slots = new[] { "site_top" } } },
+        });
+        var (served, response) = await PublishingFlowTests.DownloadAsync(_s.Anonymous(), url);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(served.Length > 0);
 
         var reader = await _s.RegisterAsync("khong_sua_qc");
         await reader.ProblemAsync(HttpMethod.Put, "/api/admin/ads", config, HttpStatusCode.Forbidden);

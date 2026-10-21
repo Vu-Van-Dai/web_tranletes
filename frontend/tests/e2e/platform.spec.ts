@@ -208,7 +208,8 @@ test('10–14. Người đọc mở truyện, tải gói chương, xem trang và
   await expect(page.getByTestId('page-indicator')).toContainText('/ 6');
   // Individual page images are never requested over the network (only the single package).
   const webpRequests: string[] = [];
-  page.on('request', (r) => r.url().endsWith('.webp') && webpRequests.push(r.url()));
+  // (site brand images such as the WebP logo are static assets, not chapter pages)
+  page.on('request', (r) => r.url().endsWith('.webp') && !new URL(r.url()).pathname.startsWith('/brand/') && webpRequests.push(r.url()));
 
   // Paged mode + keyboard navigation.
   await page.getByTestId('mode-toggle').click();
