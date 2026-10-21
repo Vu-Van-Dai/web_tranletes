@@ -18,3 +18,12 @@ pattern = "img.rongnho.shop"
 custom_domain = true
 
 # Secret (not committed): wrangler secret put ORIGIN_SHARED_SECRET
+
+# Preview deployments (non-production branches in Workers Builds). Required by current Wrangler.
+# The Worker only READS from R2 and the API, so previews may safely use the production bucket and origin.
+[previews.vars]
+ORIGIN_URL = "https://api.rongnho.shop"
+
+[[previews.r2_buckets]]
+binding = "BUCKET"
+bucket_name = "kho-truyen-cache"
