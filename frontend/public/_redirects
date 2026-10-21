@@ -1,0 +1,5 @@
+# Ad-free shells: the house workspace and the admin console are served from workspace.html (no AdSense tag).
+/quan-ly-nhom /workspace.html 200
+/quan-ly-nhom/* /workspace.html 200
+/quan-tri /workspace.html 200
+/quan-tri/* /workspace.html 200

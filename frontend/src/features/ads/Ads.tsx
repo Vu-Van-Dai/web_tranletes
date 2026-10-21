@@ -121,7 +121,7 @@ export function AdSlot({ slot, className }: { slot: AdSlotName; className?: stri
   if (units.length === 0) return null;
   const unit = units[Math.floor(pick * units.length) % units.length]!;
   return (
-    <aside className={cn('rounded-2xl border border-line bg-surface p-2 text-center', className)} aria-label="Quảng cáo" data-testid={`ad-slot-${slot}`}>
+    <aside className={cn('rounded-2xl border border-line bg-surface p-2 text-center', className)} aria-label="Quảng cáo" data-ad="" data-testid={`ad-slot-${slot}`}>
       <AdLabel />
       <Creative unit={unit} />
     </aside>
@@ -186,6 +186,11 @@ export function AdsRuntime() {
     return () => clearTimeout(id);
   }, [units, group, pathname]);
 
+  // Google AdSense on public pages: present in index.html; loaded here after arriving from an ad-free shell.
+  useEffect(() => {
+    if (!isAdFreePath(pathname)) ensureAdsense();
+  }, [pathname]);
+
   // New-tab ad: armed on this page, fired by the next click anywhere.
   useEffect(() => {
     if (isAdFreePath(pathname)) return;
@@ -229,7 +234,7 @@ function AdPopup({ unit, onClose }: { unit: AdUnit; onClose: () => void }) {
   }, [canClose, onClose]);
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur-[2px]" role="dialog" aria-modal="true" aria-label="Quảng cáo" data-testid="ad-popup">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur-[2px]" role="dialog" aria-modal="true" aria-label="Quảng cáo" data-ad="" data-testid="ad-popup">
       <div className="relative w-full max-w-lg rounded-2xl bg-surface p-3 shadow-xl">
         <div className="mb-2 flex items-center justify-between gap-2 px-1">
           <AdLabel />
@@ -249,12 +254,32 @@ function AdPopup({ unit, onClose }: { unit: AdUnit; onClose: () => void }) {
   );
 }
 
+declare const __ADSENSE_CLIENT__: string | undefined;
+
+/** Google AdSense publisher id baked in at build time (empty = disabled). */
+const adsenseClient = typeof __ADSENSE_CLIENT__ === 'string' ? __ADSENSE_CLIENT__ : '';
+const ADSENSE_SRC = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js';
+
+function ensureAdsense() {
+  if (!adsenseClient || document.querySelector(`script[src^="${ADSENSE_SRC}"]`)) return;
+  const script = document.createElement('script');
+  script.async = true;
+  script.crossOrigin = 'anonymous';
+  script.src = `${ADSENSE_SRC}?client=${adsenseClient}`;
+  document.head.appendChild(script);
+}
+
+/** Whether this page load started in an ad-free area (then it was served the ad-free shell; never reload). */
+const loadedOnAdFreePath = typeof window !== 'undefined' && isAdFreePath(window.location.pathname);
+
 /**
- * Called by the workspace/admin shells: if ad-network scripts were injected earlier in this page load
- * (SPA navigation from a public page), reload so they cannot keep running in an ad-free area.
+ * Called by the workspace/admin shells: if ad-network scripts or AdSense were loaded earlier in this page load
+ * (SPA navigation from a public page), reload so the ad-free shell (workspace.html) is served instead. A load that
+ * started on an ad-free path never reloads, so hosts that ignore _redirects cannot loop.
  */
 export function useAdFreeZone() {
   useEffect(() => {
-    if (window.__rnAdScripts) window.location.reload();
+    if (loadedOnAdFreePath) return;
+    if (window.__rnAdScripts || document.querySelector(`script[src^="${ADSENSE_SRC}"]`)) window.location.reload();
   }, []);
 }

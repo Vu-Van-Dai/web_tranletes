@@ -28,6 +28,16 @@ Notes:
 - The Content-Security-Policy in `frontend/public/_headers` allows `https:` scripts and frames for this reason.
 - Uploaded ad images are converted to WebP (max 1200×1200) and served from `img.<domain>/ads/{hash}.webp`.
 
+### Google AdSense
+
+- The AdSense tag (`ca-pub-9474823258875185`) is injected **literally into `<head>` of `dist/index.html` at build time**
+  (`frontend/vite.config.ts`), which is what AdSense's ownership check and every public page receive.
+  Override with `PUBLIC_ADSENSE_CLIENT=ca-pub-…`, or set it to an empty value to build without AdSense.
+- `public/ads.txt` declares the publisher (`google.com, pub-9474823258875185, DIRECT, f08c47fec0942fa0`).
+- The build also writes `dist/workspace.html` — the same page **without** the tag — and `public/_redirects` serves it for
+  `/quan-ly-nhom/*` and `/quan-tri/*`, so the workspace and admin console stay ad-free. Moving from a public page to
+  those areas inside the app forces one reload so the ad-free page is served.
+
 ## 2. Verified views (anti-inflation)
 
 A view is counted — and paid — only when **all** checks pass:
