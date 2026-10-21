@@ -28,6 +28,9 @@ export function pageGroupOf(pathname: string): AdPage {
   return 'other';
 }
 
+/** Clicks that count as "content" for new-tab ads: story links, chapter links and marked action buttons. */
+export const AD_TRIGGER_SELECTOR = 'a[href^="/truyen/"], a[href^="/doc/"], [data-ad-trigger]';
+
 const targets = (unit: AdUnit, group: AdPage) => !unit.pages || unit.pages.length === 0 || unit.pages.includes(group);
 
 function useAdUnits(): AdUnit[] {
@@ -191,24 +194,28 @@ export function AdsRuntime() {
     if (!isAdFreePath(pathname)) ensureAdsense();
   }, [pathname]);
 
-  // New-tab ad: armed on this page, fired by the next click anywhere.
+  // New-tab ads. The clicked link or button keeps working normally in this tab; the ad opens in a separate tab
+  // the reader can close. Trigger "any": the next click anywhere. Trigger "content": clicks on a story, a chapter
+  // or a marked action button. Each unit's frequency cap applies (0 = once per page view).
   useEffect(() => {
     if (isAdFreePath(pathname)) return;
-    const unit = units.find((u) => u.format === 'newtab' && u.targetUrl && targets(u, group) && isDue(u, pathname));
-    if (!unit) return;
-    let armed = false;
-    const arm = setTimeout(() => (armed = true), Math.max(0, unit.delaySeconds ?? 0) * 1000);
-    const onClick = () => {
-      if (!armed || !isDue(unit, pathname)) return;
+    const candidates = units.filter((u) => u.format === 'newtab' && u.targetUrl && targets(u, group));
+    if (candidates.length === 0) return;
+    const shownAt = Date.now();
+    const onClick = (e: MouseEvent) => {
+      const target = e.target instanceof Element ? e.target : null;
+      if (!target || target.closest('[data-ad]')) return;
+      const onContent = target.closest(AD_TRIGGER_SELECTOR) !== null;
+      const unit = candidates.find((u) =>
+        (u.trigger !== 'content' || onContent)
+        && Date.now() - shownAt >= Math.max(0, u.delaySeconds ?? 0) * 1000
+        && isDue(u, pathname));
+      if (!unit) return;
       recordShown(unit, pathname);
       window.open(unit.targetUrl!, '_blank', 'noopener');
-      document.removeEventListener('click', onClick, true);
     };
     document.addEventListener('click', onClick, true);
-    return () => {
-      clearTimeout(arm);
-      document.removeEventListener('click', onClick, true);
-    };
+    return () => document.removeEventListener('click', onClick, true);
   }, [units, group, pathname]);
 
   return popup ? <AdPopup unit={popup} onClose={() => setPopup(null)} /> : null;

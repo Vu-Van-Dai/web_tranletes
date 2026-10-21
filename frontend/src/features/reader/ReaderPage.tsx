@@ -320,13 +320,13 @@ function Reader({ data, onStale }: { data: ReaderData; onStale: () => void }) {
       {/* Bottom bar */}
       <footer className={cn('fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 backdrop-blur transition-transform', !barsVisible && 'translate-y-full')}>
         <div className="mx-auto flex h-14 max-w-5xl items-center gap-2 px-3">
-          <Button variant="outline" size="sm" disabled={!chapter.prev} onClick={() => goChapter(chapter.prev?.id)} data-testid="prev-chapter" icon={<ChevronLeft className="h-4 w-4" />}>
+          <Button variant="outline" size="sm" disabled={!chapter.prev} onClick={() => goChapter(chapter.prev?.id)} data-ad-trigger data-testid="prev-chapter" icon={<ChevronLeft className="h-4 w-4" />}>
             <span className="hidden sm:inline">Chương trước</span>
           </Button>
           <div className="flex-1 text-center text-xs text-muted" aria-live="polite" data-testid="page-indicator">
             Trang {pageNumbers[current] ?? 1} / {pages.length}
           </div>
-          <Button variant="outline" size="sm" disabled={!chapter.next} onClick={() => goChapter(chapter.next?.id)} data-testid="next-chapter">
+          <Button variant="outline" size="sm" disabled={!chapter.next} onClick={() => goChapter(chapter.next?.id)} data-ad-trigger data-testid="next-chapter">
             <span className="hidden sm:inline">Chương sau</span>
             <ChevronRight className="h-4 w-4" />
           </Button>
@@ -371,8 +371,8 @@ function EndOfChapter({ data, onPrev, onNext }: { data: ReaderData; onPrev: () =
     <div className="mx-auto mt-8 max-w-xl px-4 text-center">
       <p className="text-sm text-muted">Hết {chapterLabel(chapter.number)}</p>
       <div className="mt-4 flex justify-center gap-3">
-        <Button variant="outline" disabled={!chapter.prev} onClick={onPrev} icon={<ChevronLeft className="h-4 w-4" />}>Chương trước</Button>
-        <Button disabled={!chapter.next} onClick={onNext}>
+        <Button variant="outline" disabled={!chapter.prev} onClick={onPrev} data-ad-trigger icon={<ChevronLeft className="h-4 w-4" />}>Chương trước</Button>
+        <Button disabled={!chapter.next} onClick={onNext} data-ad-trigger>
           Chương sau <ChevronRight className="h-4 w-4" />
         </Button>
       </div>

@@ -14,7 +14,9 @@ namespace ComicPlatform.Application.Settings;
 /// <list type="bullet">
 /// <item><c>banner</c> — inline slot(s) on public pages: image + link, or ad-network HTML (rendered in a sandboxed iframe).</item>
 /// <item><c>popup</c> — overlay panel; closable at once (<c>button</c>) or only after a countdown (<c>countdown</c>).</item>
-/// <item><c>newtab</c> — opens <c>TargetUrl</c> in a new tab on the visitor's first click (browsers block it without a click).</item>
+/// <item><c>newtab</c> — opens <c>TargetUrl</c> in a new tab when the visitor clicks (browsers block it without a click):
+/// <c>Trigger</c> "any" = the next click anywhere, "content" = clicks on a story, a chapter or a marked action button.
+/// The clicked link still works normally in the current tab.</item>
 /// <item><c>script</c> — ad-network code injected into public pages (popunder, social bar, auto ads…).</item>
 /// </list>
 /// Ads never render in the translation-house workspace or the admin area (enforced by the web app).
@@ -32,7 +34,8 @@ public sealed record AdUnitDto(
     string? CloseMode,
     int? CountdownSeconds,
     int? DelaySeconds,
-    int? FrequencyMinutes);
+    int? FrequencyMinutes,
+    string? Trigger = null);
 
 public sealed record AdsConfigDto(bool Enabled, IReadOnlyList<AdUnitDto> Units)
 {
@@ -173,6 +176,7 @@ public sealed partial class AdsService(IAppDbContext db, IMediaService media, IP
                     break;
                 case "newtab":
                     v.Must(!string.IsNullOrWhiteSpace(u.TargetUrl), f + ".targetUrl", "Hãy nhập liên kết sẽ mở trong tab mới.");
+                    v.Must(u.Trigger is null or "any" or "content", f + ".trigger", "Cách kích hoạt không hợp lệ.");
                     break;
                 case "script":
                     v.Must(hasHtml, f + ".html", "Hãy dán mã quảng cáo của mạng quảng cáo.");
@@ -196,7 +200,8 @@ public sealed partial class AdsService(IAppDbContext db, IMediaService media, IP
                 format == "popup" ? u.CloseMode : null,
                 format == "popup" && u.CloseMode == "countdown" ? u.CountdownSeconds : null,
                 u.DelaySeconds,
-                u.FrequencyMinutes));
+                u.FrequencyMinutes,
+                format == "newtab" ? u.Trigger ?? "any" : null));
         }
 
         v.ThrowIfInvalid();

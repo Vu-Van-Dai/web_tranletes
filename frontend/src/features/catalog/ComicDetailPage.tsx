@@ -81,7 +81,7 @@ export function ComicDetailPage() {
                   <ButtonLink to={paths.read(c.latestChapter.id)} variant="outline">Chương mới nhất</ButtonLink>
                 )}
                 {status === 'authenticated' ? (
-                  <Button variant="outline" loading={follow.isPending} onClick={() => follow.mutate(!!state.data?.following)}
+                  <Button variant="outline" data-ad-trigger loading={follow.isPending} onClick={() => follow.mutate(!!state.data?.following)}
                     icon={state.data?.following ? <BookmarkCheck className="h-4 w-4 text-accent" /> : <Bookmark className="h-4 w-4" />}>
                     {state.data?.following ? 'Đang theo dõi' : 'Theo dõi'}
                   </Button>
