@@ -13,7 +13,8 @@ import { cn } from '@/utils/format';
  * there, and a full reload is forced when entering them after network scripts were injected (see useAdFreeZone).
  */
 
-const AD_FREE_PREFIXES = ['/quan-ly-nhom', '/quan-tri'];
+// '/workspace' is where an earlier deployment's redirect sent visitors (still cached by some browsers).
+const AD_FREE_PREFIXES = ['/quan-ly-nhom', '/quan-tri', '/workspace'];
 
 export const isAdFreePath = (pathname: string) => AD_FREE_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
