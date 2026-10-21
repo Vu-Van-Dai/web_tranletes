@@ -1,0 +1,14 @@
+{
+  "name": "Rồng Nhỏ – Đọc truyện tranh online",
+  "short_name": "Rồng Nhỏ",
+  "lang": "vi",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f1e6",
+  "theme_color": "#0e5c4d",
+  "icons": [
+    { "src": "/brand/icon-192.webp", "sizes": "192x192", "type": "image/webp" },
+    { "src": "/brand/icon-512.webp", "sizes": "512x512", "type": "image/webp" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, Bookmark, BookmarkCheck, PlayCircle, Search } from 'lucide-react';
 import { paths } from '@/app/paths';
 import { Badge, Button, ButtonLink, EmptyState, ErrorState, Input, Skeleton, useToast } from '@/components/ui';
+import { AdSlot } from '@/features/ads/Ads';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { libraryApi, publicApi } from '@/services/api';
 import { useDocumentTitle } from '@/hooks/useTheme';
@@ -43,6 +44,7 @@ export function ComicDetailPage() {
 
   return (
     <div className="container-page py-6">
+      <AdSlot slot="comic_top" className="mb-6" />
       <div className="grid gap-6 md:grid-cols-[14rem_1fr] lg:grid-cols-[16rem_1fr]">
         <div className="mx-auto w-44 md:mx-0 md:w-full">
           {c ? <Cover url={c.coverUrl} title={c.translatedTitle} className="shadow-card" /> : <Skeleton className="aspect-[3/4] w-full rounded-xl" />}
@@ -103,6 +105,7 @@ export function ComicDetailPage() {
         </div>
       </div>
 
+      <AdSlot slot="comic_chapters" className="mt-10" />
       <section className="mt-10">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-lg font-semibold">Danh sách chương</h2>

@@ -132,14 +132,34 @@ export interface ReaderData {
   pages: { n: number; w: number; h: number }[];
 }
 
-export interface PublicHouse {
+export interface HouseLinks {
+  facebook: string | null;
+  discord: string | null;
+  website: string | null;
+  tiktok?: string | null;
+  youtube?: string | null;
+  donate?: string | null;
+}
+
+/** Optional public details of a house (owner-editable). */
+export interface HouseDetails {
+  coverUrl: string | null;
+  tagline: string | null;
+  contactEmail: string | null;
+  foundedYear: number | null;
+  recruiting: boolean;
+  recruitmentInfo: string | null;
+}
+
+export interface PublicHouse extends HouseDetails {
+  chapterCount: number;
   id: string;
   name: string;
   slug: string;
   description: string | null;
   logoUrl: string | null;
   comicCount: number;
-  links: { facebook: string | null; discord: string | null; website: string | null };
+  links: HouseLinks;
   createdAt: string;
 }
 
@@ -150,6 +170,94 @@ export interface TagWithCount extends TagDto {
 export interface SiteInfo {
   registrationEnabled: boolean;
   announcement: string | null;
+  ads: AdsConfig;
+}
+
+// ---------------- Ads ----------------
+export type AdFormat = 'banner' | 'popup' | 'newtab' | 'script';
+export type AdSlot = 'site_top' | 'site_bottom' | 'home_top' | 'home_middle' | 'browse_top' | 'comic_top' | 'comic_chapters' | 'house_top' | 'reader_top' | 'reader_bottom';
+export type AdPage = 'home' | 'browse' | 'comic' | 'reader' | 'house' | 'library' | 'other';
+
+export interface AdUnit {
+  id: string;
+  name: string;
+  enabled: boolean;
+  format: AdFormat;
+  imageUrl: string | null;
+  targetUrl: string | null;
+  html: string | null;
+  slots: AdSlot[] | null;
+  pages: AdPage[] | null;
+  closeMode: 'button' | 'countdown' | null;
+  countdownSeconds: number | null;
+  delaySeconds: number | null;
+  frequencyMinutes: number | null;
+}
+
+export interface AdsConfig {
+  enabled: boolean;
+  units: AdUnit[];
+}
+
+// ---------------- Views & revenue ----------------
+export interface ViewTicket {
+  ticket: string;
+  minSeconds: number;
+  minPages: number;
+}
+
+export interface ViewTotals {
+  views: number;
+  suspiciousViews: number;
+  revenue: number | null;
+}
+
+export interface ChapterStats extends ViewTotals {
+  chapterId: string;
+  number: number | null;
+  title: string | null;
+  deleted: boolean;
+}
+
+export interface ComicStats extends ViewTotals {
+  comicId: string;
+  title: string;
+  deleted: boolean;
+  chapters: ChapterStats[];
+}
+
+export interface DailyStats extends ViewTotals {
+  day: string;
+}
+
+export interface HouseViewReport {
+  from: string;
+  to: string;
+  revenueVisible: boolean;
+  revenuePerThousandViews: number | null;
+  totals: ViewTotals;
+  comics: ComicStats[];
+  daily: DailyStats[];
+}
+
+export interface HouseRevenueRow {
+  houseId: string;
+  name: string;
+  slug: string | null;
+  views: number;
+  suspiciousViews: number;
+  revenue: number;
+  suspiciousRatio: number;
+}
+
+export interface AdminRevenueReport {
+  from: string;
+  to: string;
+  revenuePerThousandViews: number;
+  totals: ViewTotals;
+  houses: HouseRevenueRow[];
+  daily: DailyStats[];
+  rejections: { reason: string; count: number }[];
 }
 
 export interface HistoryItem {
@@ -166,14 +274,14 @@ export interface ComicLibraryState {
 }
 
 // ---------------- House workspace ----------------
-export interface HouseProfile {
+export interface HouseProfile extends HouseDetails {
   id: string;
   name: string;
   slug: string;
   description: string | null;
   logoUrl: string | null;
   status: string;
-  links: { facebook: string | null; discord: string | null; website: string | null };
+  links: HouseLinks;
   myRole: 'owner' | 'staff';
   myPermissions: Permission[];
   createdAt: string;
@@ -322,7 +430,7 @@ export interface AdminHouseDetail {
   logoUrl: string | null;
   status: 'active' | 'suspended';
   suspendedReason: string | null;
-  links: { facebook: string | null; discord: string | null; website: string | null };
+  links: HouseLinks;
   memberCount: number;
   comicCount: number;
   chapterCount: number;
@@ -408,6 +516,7 @@ export interface AuditItem {
 export interface SystemSettings {
   registrationEnabled: boolean;
   announcement: string | null;
+  revenuePerThousandViews: number;
 }
 
 export interface SystemInfo {

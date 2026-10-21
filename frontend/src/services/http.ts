@@ -141,8 +141,14 @@ export async function request<T>(path: string, options: RequestOptions = {}, ret
   return (await response.json()) as T;
 }
 
+/** Extra multipart file parts sent BEFORE the main file (the server streams parts in order). */
+export interface ExtraPart {
+  field: string;
+  file: File;
+}
+
 /** Multipart upload with byte progress (fetch has no upload progress events). */
-export function uploadFile<T>(path: string, file: File, onProgress: (fraction: number) => void, signal?: AbortSignal): Promise<T> {
+export function uploadFile<T>(path: string, file: File, onProgress: (fraction: number) => void, signal?: AbortSignal, extras: ExtraPart[] = []): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', apiUrl(path));
@@ -159,15 +165,16 @@ export function uploadFile<T>(path: string, file: File, onProgress: (fraction: n
     };
     signal?.addEventListener('abort', () => xhr.abort());
     const form = new FormData();
+    for (const extra of extras) form.append(extra.field, extra.file, extra.file.name);
     form.append('file', file, file.name);
     xhr.send(form);
   });
 }
 
-export function putFile<T>(path: string, file: File): Promise<T> {
+export function putFile<T>(path: string, file: File, method: 'PUT' | 'POST' = 'PUT'): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('PUT', apiUrl(path));
+    xhr.open(method, apiUrl(path));
     xhr.withCredentials = true;
     if (accessToken) xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
     if (currentHouseId) xhr.setRequestHeader('X-House-Id', currentHouseId);

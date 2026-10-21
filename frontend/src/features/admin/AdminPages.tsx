@@ -4,7 +4,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Activity, BookCopy, Building2, Cpu, FileClock, Gauge, HardDrive, Plus, Settings, ShieldCheck, UserPlus, Users } from 'lucide-react';
+import { Activity, BookCopy, Building2, Cpu, FileClock, Gauge, HardDrive, Megaphone, Plus, Settings, ShieldCheck, UserPlus, Users, Wallet } from 'lucide-react';
 import { paths } from '@/app/paths';
 import {
   Badge, Button, Checkbox, ConfirmDialog, DataTable, EmptyState, ErrorState, Field, Input, Modal, PageHeader, Pagination, Select, Skeleton, StatTile, Tabs, Textarea, useToast,
@@ -32,6 +32,8 @@ export function AdminLayout() {
           { to: paths.admin.houses, label: 'Nhóm dịch', icon: <Building2 className="h-4 w-4" /> },
           { to: paths.admin.users, label: 'Người dùng', icon: <Users className="h-4 w-4" /> },
           { to: paths.admin.stats, label: 'Thống kê', icon: <Activity className="h-4 w-4" /> },
+          { to: paths.admin.revenue, label: 'Doanh thu', icon: <Wallet className="h-4 w-4" /> },
+          { to: paths.admin.ads, label: 'Quảng cáo', icon: <Megaphone className="h-4 w-4" /> },
           { to: paths.admin.audit, label: 'Nhật ký', icon: <FileClock className="h-4 w-4" /> },
           { to: paths.admin.settings, label: 'Cài đặt hệ thống', icon: <Settings className="h-4 w-4" /> },
         ]}
@@ -443,10 +445,16 @@ export function AdminSettingsPage() {
   const queryClient = useQueryClient();
   const settings = useQuery({ queryKey: ['admin', 'settings'], queryFn: adminApi.settings });
   const system = useQuery({ queryKey: ['admin', 'system'], queryFn: adminApi.system });
-  const [draft, setDraft] = useState<{ registrationEnabled: boolean; announcement: string } | null>(null);
-  const current = draft ?? (settings.data ? { registrationEnabled: settings.data.registrationEnabled, announcement: settings.data.announcement ?? '' } : null);
+  const [draft, setDraft] = useState<{ registrationEnabled: boolean; announcement: string; rate: string } | null>(null);
+  const current = draft ?? (settings.data
+    ? { registrationEnabled: settings.data.registrationEnabled, announcement: settings.data.announcement ?? '', rate: String(settings.data.revenuePerThousandViews) }
+    : null);
   const save = useMutation({
-    mutationFn: () => adminApi.updateSettings({ registrationEnabled: current!.registrationEnabled, announcement: current!.announcement }),
+    mutationFn: () => adminApi.updateSettings({
+      registrationEnabled: current!.registrationEnabled,
+      announcement: current!.announcement,
+      revenuePerThousandViews: Math.max(0, Number(current!.rate) || 0),
+    }),
     onSuccess: () => { toast.success('Đã lưu cài đặt.'); setDraft(null); queryClient.invalidateQueries({ queryKey: ['admin', 'settings'] }); queryClient.invalidateQueries({ queryKey: ['site'] }); },
     onError: (e) => toast.error(e),
   });
@@ -462,6 +470,10 @@ export function AdminSettingsPage() {
               <Checkbox label="Cho phép đăng ký tài khoản mới" checked={current.registrationEnabled} onChange={(e) => setDraft({ ...current, registrationEnabled: e.target.checked })} />
               <Field label="Thông báo trên trang (để trống để tắt)" hint="Hiển thị ở đầu mọi trang đọc truyện.">
                 {(id) => <Textarea id={id} rows={3} maxLength={500} value={current.announcement} onChange={(e) => setDraft({ ...current, announcement: e.target.value })} />}
+              </Field>
+              <Field label="Đơn giá trả nhóm dịch (VNĐ / 1.000 lượt xem hợp lệ)"
+                hint="Áp dụng cho các lượt xem được tính từ lúc lưu; doanh thu đã ghi nhận không bị tính lại. Đặt 0 để tạm ngừng tính tiền.">
+                {(id) => <Input id={id} type="number" min={0} step={100} inputMode="decimal" value={current.rate} onChange={(e) => setDraft({ ...current, rate: e.target.value })} data-testid="revenue-rate" />}
               </Field>
               <div className="flex justify-end"><Button loading={save.isPending} onClick={() => save.mutate()}>Lưu cài đặt</Button></div>
             </>

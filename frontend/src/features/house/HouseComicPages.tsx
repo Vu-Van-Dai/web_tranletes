@@ -4,7 +4,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ExternalLink, Plus, Search, Trash2 } from 'lucide-react';
+import { ExternalLink, Plus, Search, Send, Trash2, Upload } from 'lucide-react';
 import { paths } from '@/app/paths';
 import {
   Badge, Button, Checkbox, ConfirmDialog, DataTable, EmptyState, ErrorState, Field, Input, Modal, PageHeader, Pagination, Select, Skeleton, Textarea, useToast,
@@ -17,6 +17,7 @@ import { comicStatusLabel } from '@/text/vi';
 import type { HouseComicDetail } from '@/types/api';
 import { applyServerErrors } from '@/utils/forms';
 import { chapterLabel, formatDate, timeAgo } from '@/utils/format';
+import { BulkUploadDialog } from './BulkUploadDialog';
 import { ChapterStatusBadge, isActiveJob, JobProgress } from './shared';
 
 const comicSchema = z.object({
@@ -158,6 +159,29 @@ export function HouseComicPage() {
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [newChapter, setNewChapter] = useState(false);
+  const [bulk, setBulk] = useState(false);
+  const [publishAll, setPublishAll] = useState(false);
+  const limits = useQuery({ queryKey: ['house', 'upload-limits'], queryFn: houseApi.uploadLimits, staleTime: Infinity, enabled: can('uploadChapters') });
+  const readyChapters = (chapters.data ?? []).filter((ch) => ch.readyVersion !== null && !isActiveJob(ch.latestJob));
+  const publishReady = useMutation({
+    mutationFn: async () => {
+      let ok = 0;
+      for (const ch of readyChapters) {
+        try {
+          await houseApi.publish(ch.id);
+          ok++;
+        } catch {
+          // keep going; the list shows what is still unpublished
+        }
+      }
+      return ok;
+    },
+    onSuccess: (ok) => {
+      setPublishAll(false);
+      toast.success(`Đã đăng ${ok}/${readyChapters.length} chương.`);
+      queryClient.invalidateQueries({ queryKey: key });
+    },
+  });
 
   const form = useForm<ComicForm>({ resolver: zodResolver(comicSchema), defaultValues: emptyComic });
   const startEdit = (c: HouseComicDetail) => {
@@ -224,7 +248,15 @@ export function HouseComicPage() {
         <section>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-semibold">Chương ({chapters.data?.length ?? 0})</h2>
-            {can('manageChapters') && <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setNewChapter(true)} data-testid="new-chapter">Thêm chương</Button>}
+            <div className="flex flex-wrap justify-end gap-2">
+              {can('publishChapters') && readyChapters.length > 0 && (
+                <Button size="sm" variant="outline" icon={<Send className="h-4 w-4" />} onClick={() => setPublishAll(true)} data-testid="publish-all">Đăng {readyChapters.length} chương sẵn sàng</Button>
+              )}
+              {can('manageChapters') && can('uploadChapters') && (
+                <Button size="sm" variant="outline" icon={<Upload className="h-4 w-4" />} disabled={!limits.data} onClick={() => setBulk(true)} data-testid="bulk-upload-open">Tải nhiều chương</Button>
+              )}
+              {can('manageChapters') && <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setNewChapter(true)} data-testid="new-chapter">Thêm chương</Button>}
+            </div>
           </div>
           {chapters.isError ? <ErrorState error={chapters.error} onRetry={() => chapters.refetch()} />
             : chapters.data?.length === 0 ? <EmptyState title="Chưa có chương nào" description="Thêm chương rồi tải tệp ZIP/CBZ chứa các trang." />
@@ -260,6 +292,13 @@ export function HouseComicPage() {
         footer={<><Button variant="outline" onClick={() => setEditing(false)}>Huỷ</Button><Button loading={form.formState.isSubmitting} onClick={save}>Lưu</Button></>}>
         <form onSubmit={save} noValidate><ComicFormFields form={form} /></form>
       </Modal>
+      {bulk && limits.data && (
+        <BulkUploadDialog comicId={id} chapters={chapters.data ?? []} limits={limits.data}
+          onClose={() => { setBulk(false); queryClient.invalidateQueries({ queryKey: key }); }} />
+      )}
+      <ConfirmDialog open={publishAll} title="Đăng các chương sẵn sàng" confirmLabel="Đăng tất cả" loading={publishReady.isPending}
+        message={<>Đăng {readyChapters.length} chương đã xử lý xong ({readyChapters.map((ch) => chapterLabel(ch.number)).join(', ')}). Chương đã đăng sẽ được thay bằng phiên bản mới.</>}
+        onClose={() => setPublishAll(false)} onConfirm={() => publishReady.mutate()} />
       {newChapter && <NewChapterDialog comicId={id} nextNumber={(chapters.data?.[0]?.number ?? 0) + 1} onClose={() => setNewChapter(false)} />}
       <ConfirmDialog open={deleting} danger title="Xoá truyện" confirmLabel="Xoá truyện" loading={remove.isPending}
         message={<>Truyện <strong>{c?.translatedTitle}</strong> và mọi chương sẽ bị gỡ khỏi trang đọc ngay lập tức. Dữ liệu được giữ 30 ngày trước khi xoá vĩnh viễn.</>}

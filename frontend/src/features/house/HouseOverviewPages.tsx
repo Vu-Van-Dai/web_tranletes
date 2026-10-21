@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { AlertTriangle, BookCopy, CheckCircle2, HardDrive, Loader, Users } from 'lucide-react';
 import { paths } from '@/app/paths';
-import { Button, DataTable, EmptyState, ErrorState, Field, Input, PageHeader, Skeleton, StatTile, Textarea, useToast } from '@/components/ui';
+import { Button, Checkbox, DataTable, EmptyState, ErrorState, Field, Input, PageHeader, Skeleton, StatTile, Textarea, useToast } from '@/components/ui';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { HouseLogo } from '@/features/catalog/CatalogPages';
 import { houseApi } from '@/services/api';
@@ -88,14 +88,33 @@ export function HouseProcessingPage() {
   );
 }
 
+const optionalUrl = z.string().trim().url('Liên kết không hợp lệ.').or(z.literal(''));
 const profileSchema = z.object({
   name: z.string().trim().min(2, 'Tên nhóm cần ít nhất 2 ký tự.').max(100),
   slug: z.string().trim().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Chỉ gồm chữ thường không dấu, số và dấu gạch ngang.'),
+  tagline: z.string().max(160, 'Tối đa 160 ký tự.'),
   description: z.string().max(2000, 'Tối đa 2000 ký tự.'),
-  facebook: z.string().url('Liên kết không hợp lệ.').or(z.literal('')),
-  discord: z.string().url('Liên kết không hợp lệ.').or(z.literal('')),
-  website: z.string().url('Liên kết không hợp lệ.').or(z.literal('')),
+  contactEmail: z.string().trim().email('Email không hợp lệ.').or(z.literal('')),
+  foundedYear: z.string().regex(/^(\d{4})?$/, 'Nhập năm, ví dụ 2021.'),
+  recruiting: z.boolean(),
+  recruitmentInfo: z.string().max(1000, 'Tối đa 1000 ký tự.'),
+  facebook: optionalUrl,
+  tiktok: optionalUrl,
+  youtube: optionalUrl,
+  discord: optionalUrl,
+  website: optionalUrl,
+  donate: optionalUrl,
 });
+type ProfileForm = z.infer<typeof profileSchema>;
+
+const linkFields = [
+  { key: 'facebook', label: 'Facebook' },
+  { key: 'tiktok', label: 'TikTok' },
+  { key: 'youtube', label: 'YouTube' },
+  { key: 'discord', label: 'Discord' },
+  { key: 'website', label: 'Trang web' },
+  { key: 'donate', label: 'Ủng hộ nhóm (Ko-fi, Momo…)' },
+] as const;
 
 export function HouseProfilePage() {
   useDocumentTitle('Hồ sơ nhóm');
@@ -104,66 +123,137 @@ export function HouseProfilePage() {
   const queryClient = useQueryClient();
   const profile = useQuery({ queryKey: ['house', currentHouse?.houseId, 'profile'], queryFn: houseApi.profile });
   const editable = can('manageProfile');
+  const p = profile.data;
 
-  const form = useForm<z.infer<typeof profileSchema>>({
+  const form = useForm<ProfileForm>({
     resolver: zodResolver(profileSchema),
-    values: profile.data
-      ? { name: profile.data.name, slug: profile.data.slug, description: profile.data.description ?? '', facebook: profile.data.links.facebook ?? '', discord: profile.data.links.discord ?? '', website: profile.data.links.website ?? '' }
+    values: p
+      ? {
+          name: p.name,
+          slug: p.slug,
+          tagline: p.tagline ?? '',
+          description: p.description ?? '',
+          contactEmail: p.contactEmail ?? '',
+          foundedYear: p.foundedYear ? String(p.foundedYear) : '',
+          recruiting: p.recruiting,
+          recruitmentInfo: p.recruitmentInfo ?? '',
+          facebook: p.links.facebook ?? '',
+          tiktok: p.links.tiktok ?? '',
+          youtube: p.links.youtube ?? '',
+          discord: p.links.discord ?? '',
+          website: p.links.website ?? '',
+          donate: p.links.donate ?? '',
+        }
       : undefined,
   });
 
+  const recruiting = useWatch({ control: form.control, name: 'recruiting' });
+
   const save = form.handleSubmit(async (v) => {
     try {
-      await houseApi.updateProfile({ name: v.name, slug: v.slug, description: v.description, links: { facebook: v.facebook || undefined, discord: v.discord || undefined, website: v.website || undefined } });
+      await houseApi.updateProfile({
+        name: v.name,
+        slug: v.slug,
+        description: v.description,
+        tagline: v.tagline || undefined,
+        contactEmail: v.contactEmail || undefined,
+        foundedYear: v.foundedYear ? Number(v.foundedYear) : null,
+        recruiting: v.recruiting,
+        recruitmentInfo: v.recruitmentInfo || undefined,
+        links: Object.fromEntries(linkFields.map((l) => [l.key, v[l.key] || undefined])),
+      });
       toast.success('Đã lưu hồ sơ nhóm.');
       queryClient.invalidateQueries({ queryKey: ['house'] });
       await reloadMe();
     } catch (e) {
-      if (!applyServerErrors(e, form.setError, ['name', 'slug', 'description', 'facebook', 'discord', 'website'])) toast.error(e);
+      if (!applyServerErrors(e, form.setError, ['name', 'slug', 'tagline', 'description', 'contactEmail', 'foundedYear', 'recruitmentInfo'])) toast.error(e);
     }
   });
 
-  const logo = useMutation({
-    mutationFn: (file: File) => houseApi.uploadLogo(file),
-    onSuccess: async () => {
-      toast.success('Đã cập nhật logo.');
-      await queryClient.invalidateQueries({ queryKey: ['house'] });
-      await reloadMe();
-    },
-    onError: (e) => toast.error(e),
-  });
+  const onImageSaved = (message: string) => async () => {
+    toast.success(message);
+    await queryClient.invalidateQueries({ queryKey: ['house'] });
+    await reloadMe();
+  };
+  const logo = useMutation({ mutationFn: (file: File) => houseApi.uploadLogo(file), onSuccess: onImageSaved('Đã cập nhật logo.'), onError: (e) => toast.error(e) });
+  const cover = useMutation({ mutationFn: (file: File) => houseApi.uploadHouseCover(file), onSuccess: onImageSaved('Đã cập nhật ảnh bìa nhóm.'), onError: (e) => toast.error(e) });
+  const removeCover = useMutation({ mutationFn: () => houseApi.removeHouseCover(), onSuccess: onImageSaved('Đã gỡ ảnh bìa.'), onError: (e) => toast.error(e) });
 
   if (profile.isError) return <ErrorState error={profile.error} onRetry={() => profile.refetch()} />;
-  const p = profile.data;
   const errors = form.formState.errors;
 
   return (
     <>
-      <PageHeader title="Hồ sơ nhóm dịch" description="Thông tin hiển thị công khai trên trang nhóm dịch." />
+      <PageHeader title="Hồ sơ nhóm dịch" description="Thông tin hiển thị công khai trên trang nhóm dịch. Ảnh được tự động nén sang WebP." />
+
+      {/* Cover banner (Facebook-cover proportions) */}
+      <section className="card mb-6 overflow-hidden" aria-label="Ảnh bìa nhóm">
+        <div className="relative aspect-[1640/624] max-h-72 w-full bg-surface-2">
+          {p?.coverUrl ? (
+            <img src={p.coverUrl} alt="Ảnh bìa nhóm" className="h-full w-full object-cover" />
+          ) : (
+            <div className="grid h-full place-items-center text-sm text-muted">Chưa có ảnh bìa — nên dùng ảnh ngang 1640×624px.</div>
+          )}
+        </div>
+        {editable && (
+          <div className="flex flex-wrap items-center gap-3 p-3 text-sm">
+            <label className="cursor-pointer text-accent hover:underline">
+              {cover.isPending ? 'Đang xử lý ảnh…' : p?.coverUrl ? 'Đổi ảnh bìa' : 'Tải ảnh bìa lên'}
+              <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" data-testid="house-cover-input"
+                onChange={(e) => { if (e.target.files?.[0]) cover.mutate(e.target.files[0]); e.target.value = ''; }} />
+            </label>
+            {p?.coverUrl && <button type="button" className="text-muted hover:text-danger" onClick={() => removeCover.mutate()}>Gỡ ảnh bìa</button>}
+            <span className="text-xs text-muted">JPEG/PNG/WebP, tối đa 8 MB.</span>
+          </div>
+        )}
+      </section>
+
       <div className="grid gap-6 lg:grid-cols-[16rem_1fr]">
-        <div className="card flex flex-col items-center gap-3 p-5 text-center">
+        <div className="card flex h-fit flex-col items-center gap-3 p-5 text-center">
           {p ? <HouseLogo url={p.logoUrl} name={p.name} size="lg" /> : <Skeleton className="h-20 w-20 rounded-2xl" />}
           {editable && (
             <label className="cursor-pointer text-sm text-accent hover:underline">
               {logo.isPending ? 'Đang tải lên…' : 'Đổi logo (JPEG/PNG/WebP)'}
-              <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(e) => e.target.files?.[0] && logo.mutate(e.target.files[0])} />
+              <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only"
+                onChange={(e) => { if (e.target.files?.[0]) logo.mutate(e.target.files[0]); e.target.value = ''; }} />
             </label>
           )}
           {p && <Link className="text-xs text-muted hover:text-ink" to={paths.house(p.slug)}>Xem trang công khai</Link>}
         </div>
-        <form onSubmit={save} className="card space-y-4 p-5" noValidate>
+        <form onSubmit={save} className="card space-y-5 p-5" noValidate>
           <fieldset disabled={!editable} className="space-y-4">
+            <legend className="mb-2 font-semibold">Thông tin chung</legend>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Tên nhóm" error={errors.name?.message} required>{(id) => <Input id={id} {...form.register('name')} />}</Field>
               <Field label="Đường dẫn" error={errors.slug?.message} hint="Dùng trong URL trang nhóm.">{(id) => <Input id={id} {...form.register('slug')} />}</Field>
             </div>
-            <Field label="Giới thiệu" error={errors.description?.message}>{(id) => <Textarea id={id} {...form.register('description')} />}</Field>
-            <div className="grid gap-4 sm:grid-cols-3">
-              <Field label="Facebook" error={errors.facebook?.message}>{(id) => <Input id={id} placeholder="https://" {...form.register('facebook')} />}</Field>
-              <Field label="Discord" error={errors.discord?.message}>{(id) => <Input id={id} placeholder="https://" {...form.register('discord')} />}</Field>
-              <Field label="Trang web" error={errors.website?.message}>{(id) => <Input id={id} placeholder="https://" {...form.register('website')} />}</Field>
+            <Field label="Khẩu hiệu" error={errors.tagline?.message} hint="Một câu ngắn hiển thị dưới tên nhóm.">{(id) => <Input id={id} placeholder="Ví dụ: Dịch bằng cả trái tim" {...form.register('tagline')} />}</Field>
+            <Field label="Giới thiệu" error={errors.description?.message}>{(id) => <Textarea id={id} rows={5} {...form.register('description')} />}</Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Email liên hệ" error={errors.contactEmail?.message}>{(id) => <Input id={id} type="email" placeholder="nhom@gmail.com" {...form.register('contactEmail')} />}</Field>
+              <Field label="Năm thành lập" error={errors.foundedYear?.message}>{(id) => <Input id={id} inputMode="numeric" placeholder="2021" {...form.register('foundedYear')} />}</Field>
             </div>
           </fieldset>
+
+          <fieldset disabled={!editable} className="space-y-4">
+            <legend className="mb-2 font-semibold">Mạng xã hội & ủng hộ</legend>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {linkFields.map((l) => (
+                <Field key={l.key} label={l.label} error={errors[l.key]?.message}>{(id) => <Input id={id} placeholder="https://" {...form.register(l.key)} />}</Field>
+              ))}
+            </div>
+          </fieldset>
+
+          <fieldset disabled={!editable} className="space-y-4">
+            <legend className="mb-2 font-semibold">Tuyển thành viên</legend>
+            <Checkbox label="Nhóm đang tuyển thành viên" description="Hiển thị nhãn “Đang tuyển” trên trang nhóm." {...form.register('recruiting')} />
+            {recruiting && (
+              <Field label="Thông tin tuyển" error={errors.recruitmentInfo?.message} hint="Vị trí cần tuyển, yêu cầu, cách liên hệ…">
+                {(id) => <Textarea id={id} rows={3} {...form.register('recruitmentInfo')} />}
+              </Field>
+            )}
+          </fieldset>
+
           {editable ? (
             <div className="flex justify-end"><Button type="submit" loading={form.formState.isSubmitting}>Lưu thay đổi</Button></div>
           ) : (

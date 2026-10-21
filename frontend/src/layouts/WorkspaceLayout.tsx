@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router';
 import { ArrowLeft, Menu, X } from 'lucide-react';
 import { paths } from '@/app/paths';
 import { Button } from '@/components/ui';
+import { useAdFreeZone } from '@/features/ads/Ads';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { cn } from '@/utils/format';
 import { Logo, ThemeToggle } from './PublicLayout';
@@ -21,6 +22,8 @@ export function WorkspaceLayout({ title, items, header }: { title: string; items
   const location = useLocation();
   const { user } = useAuth();
   useEffect(() => setOpen(false), [location.pathname]);
+  // House workspace and admin console never show ads.
+  useAdFreeZone();
 
   const nav = (
     <nav className="flex flex-col gap-1" aria-label={title}>
@@ -46,7 +49,7 @@ export function WorkspaceLayout({ title, items, header }: { title: string; items
     <div className="flex min-h-dvh">
       {/* Desktop sidebar */}
       <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col gap-6 border-r border-line bg-surface p-4 lg:flex">
-        <Logo />
+        <Logo full />
         <div>
           <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wide text-muted">{title}</p>
           {header}
@@ -63,7 +66,7 @@ export function WorkspaceLayout({ title, items, header }: { title: string; items
           <div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
           <div className="absolute inset-y-0 left-0 flex w-72 flex-col gap-6 overflow-y-auto bg-surface p-4 shadow-xl">
             <div className="flex items-center justify-between">
-              <Logo />
+              <Logo full />
               <Button variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="Đóng menu">
                 <X className="h-5 w-5" />
               </Button>

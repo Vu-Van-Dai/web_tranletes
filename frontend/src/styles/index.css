@@ -7,55 +7,62 @@
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 /* ---------------------------------------------------------------
-   "Mực & giấy" design tokens. Body text ≥ 4.5:1 in both themes.
+   "Rồng Nhỏ" brand tokens (teal · jade · cream · warm gold, coral accent).
+   Body text ≥ 4.5:1 in both themes.
    --------------------------------------------------------------- */
 :root {
-  --bg: #f6f2ea;
-  --surface: #fffdf8;
-  --surface-2: #f0e9dd;
-  --surface-3: #e7dfd1;
-  --ink: #1d1a17;
-  --muted: #5d564e;
-  --line: #e0d6c6;
-  --accent: #c2361c;
-  --accent-hover: #a82d16;
+  --bg: #f5f1e6;
+  --surface: #fffdf7;
+  --surface-2: #efe8d8;
+  --surface-3: #e4dbc6;
+  --ink: #10241f;
+  --muted: #4e5c56;
+  --line: #ddd3bd;
+  --accent: #0e6b58;
+  --accent-hover: #0a5546;
   --accent-ink: #ffffff;
-  --accent-soft: #f8e3dc;
-  --success: #0f766e;
-  --success-soft: #d9f0ec;
+  --accent-soft: #dcefe7;
+  --gold: #d9a441;
+  --gold-soft: #f7ead0;
+  --coral: #e2704f;
+  --success: #2e7d32;
+  --success-soft: #def0dc;
   --warn: #9a5b06;
   --warn-soft: #fbedd3;
   --danger: #b4231b;
   --danger-soft: #fbe1df;
   --focus: #1f6feb;
-  /* Chart series colour, validated (dataviz validator) against the light surface. */
-  --chart-1: #c2361c;
-  --shadow: 0 1px 2px rgb(29 26 23 / 0.06), 0 4px 16px rgb(29 26 23 / 0.06);
+  /* Chart series colour, validated against the light surface. */
+  --chart-1: #0e6b58;
+  --shadow: 0 1px 2px rgb(16 36 31 / 0.06), 0 4px 16px rgb(16 36 31 / 0.06);
   color-scheme: light;
 }
 
 :root[data-theme="dark"],
 [data-theme="dark"] {
-  --bg: #0e131d;
-  --surface: #151c29;
-  --surface-2: #1c2536;
-  --surface-3: #263146;
-  --ink: #ebe6dd;
-  --muted: #a8a196;
-  --line: #2a3448;
-  --accent: #ee6446;
-  --accent-hover: #ff7a5c;
-  --accent-ink: #1a0b06;
-  --accent-soft: #3a2019;
-  --success: #4fc2b4;
-  --success-soft: #11332f;
+  --bg: #0b1615;
+  --surface: #11201e;
+  --surface-2: #172a27;
+  --surface-3: #203834;
+  --ink: #e8efe9;
+  --muted: #a2b3ac;
+  --line: #24403b;
+  --accent: #4cc7a8;
+  --accent-hover: #6ad8bb;
+  --accent-ink: #04201a;
+  --accent-soft: #133a32;
+  --gold: #e3b65c;
+  --gold-soft: #3a2f17;
+  --coral: #f08a6b;
+  --success: #7bd389;
+  --success-soft: #16351b;
   --warn: #f0b44c;
   --warn-soft: #3a2c12;
   --danger: #ff7b70;
   --danger-soft: #3d1b19;
   --focus: #6ea8ff;
-  /* Dark step chosen separately (lightness band 0.48–0.67 vs #151c29), not an automatic flip. */
-  --chart-1: #e45a3c;
+  /* Dark step chosen separately (vs #11201e), not an automatic flip. */
+  --chart-1: #3fb597;
   --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 20px rgb(0 0 0 / 0.25);
   color-scheme: dark;
 }
@@ -72,6 +79,9 @@
   --color-accent-hover: var(--accent-hover);
   --color-accent-ink: var(--accent-ink);
   --color-accent-soft: var(--accent-soft);
+  --color-gold: var(--gold);
+  --color-gold-soft: var(--gold-soft);
+  --color-coral: var(--coral);
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
   --color-warn: var(--warn);
@@ -120,6 +130,16 @@
     @apply animate-pulse rounded-lg bg-surface-3;
   }
 
+  /* Brand underline: gold rule with a coral dot, as in the logo. */
+  .brand-rule {
+    @apply relative block h-1 rounded-full bg-gold;
+  }
+
+  .brand-rule::before {
+    content: "";
+    @apply absolute -left-1 -top-0.5 h-2 w-2 rounded-full bg-coral;
+  }
+
   .link {
     @apply text-accent underline-offset-4 hover:underline;
   }
@@ -128,6 +148,19 @@
 /* Reader: hide scrollbars' visual noise without disabling scroll. */
 .reader-scroll {
   scrollbar-width: thin;
+}
+
+/* Logo variant per theme (dark text on light, light text on dark). */
+.logo-dark {
+  display: none;
+}
+
+[data-theme="dark"] .logo-light {
+  display: none;
+}
+
+[data-theme="dark"] .logo-dark {
+  display: block;
 }
 
 @media (prefers-reduced-motion: reduce) {

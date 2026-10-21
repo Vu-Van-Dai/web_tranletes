@@ -26,6 +26,9 @@ const houseComics = () => import('@/features/house/HouseComicPages');
 const houseChapter = () => import('@/features/house/HouseChapterPage');
 const housePreview = () => import('@/features/house/HouseVersionPreviewPage');
 const admin = () => import('@/features/admin/AdminPages');
+const adminRevenue = () => import('@/features/admin/AdminRevenuePages');
+const adminAds = () => import('@/features/admin/AdminAdsPage');
+const houseStats = () => import('@/features/house/HouseStatsPage');
 
 function RouteError() {
   const error = useRouteError();
@@ -65,6 +68,7 @@ export const router = createBrowserRouter([
           { index: true, element: lazyNamed(houseOverview, 'HouseDashboardPage') },
           { path: 'ho-so', element: lazyNamed(houseOverview, 'HouseProfilePage') },
           { path: 'xu-ly', element: lazyNamed(houseOverview, 'HouseProcessingPage') },
+          { path: 'thong-ke', element: lazyNamed(houseStats, 'HouseStatsPage') },
           { path: 'cai-dat', element: lazyNamed(houseOverview, 'HouseSettingsPage') },
           { path: 'thanh-vien', element: lazyNamed(houseMembers, 'HouseMembersPage') },
           { path: 'truyen', element: lazyNamed(houseComics, 'HouseComicsPage') },
@@ -84,6 +88,9 @@ export const router = createBrowserRouter([
           { path: 'thong-ke', element: lazyNamed(admin, 'AdminStatsPage') },
           { path: 'nhat-ky', element: lazyNamed(admin, 'AdminAuditPage') },
           { path: 'cai-dat', element: lazyNamed(admin, 'AdminSettingsPage') },
+          { path: 'doanh-thu', element: lazyNamed(adminRevenue, 'AdminRevenuePage') },
+          { path: 'doanh-thu/:id', element: lazyNamed(adminRevenue, 'AdminHouseRevenuePage') },
+          { path: 'quang-cao', element: lazyNamed(adminAds, 'AdminAdsPage') },
         ],
       },
       { path: '*', element: <Outlet /> },

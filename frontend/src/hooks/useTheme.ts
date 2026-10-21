@@ -31,7 +31,7 @@ export function useTheme() {
 
 export function useDocumentTitle(title: string | undefined) {
   useEffect(() => {
-    const app = (import.meta.env.PUBLIC_APP_NAME as string | undefined) || 'Trạm Truyện';
+    const app = (import.meta.env.PUBLIC_APP_NAME as string | undefined) || 'Rồng Nhỏ';
     document.title = title ? `${title} · ${app}` : app;
   }, [title]);
 }

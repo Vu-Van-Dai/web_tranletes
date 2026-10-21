@@ -5,18 +5,21 @@ import { BookOpen, Compass, Home, Library, LogIn, LogOut, Menu, Moon, Search, Sh
 import { paths } from '@/app/paths';
 import { env } from '@/config/env';
 import { Button, ButtonLink } from '@/components/ui';
+import { AdSlot, AdsRuntime } from '@/features/ads/Ads';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { useTheme } from '@/hooks/useTheme';
 import { publicApi } from '@/services/api';
 import { cn } from '@/utils/format';
 
-export function Logo() {
+/** Brand logo: the R-dragon monogram on phones, the full wordmark (light/dark variant per theme) from sm up. */
+export function Logo({ full = false }: { full?: boolean }) {
   return (
-    <Link to={paths.home} className="flex shrink-0 items-center gap-2 font-semibold tracking-tight" aria-label={`${env.appName} – trang chủ`}>
-      <span className="grid h-8 w-8 place-items-center rounded-lg bg-accent text-accent-ink">
-        <BookOpen className="h-4.5 w-4.5" aria-hidden />
+    <Link to={paths.home} className="flex shrink-0 items-center" aria-label={`${env.appName} – trang chủ`}>
+      <img src="/brand/monogram.webp" alt="" width={32} height={40} className={cn('h-10 w-auto', full ? 'hidden' : 'sm:hidden')} decoding="async" />
+      <span className={cn(full ? 'block' : 'hidden sm:block')}>
+        <img src="/brand/logo-light.webp" alt={env.appName} width={138} height={44} className="logo-light h-11 w-auto" decoding="async" />
+        <img src="/brand/logo-dark.webp" alt={env.appName} width={174} height={40} className="logo-dark h-10 w-auto" decoding="async" />
       </span>
-      <span className="hidden text-lg sm:inline">{env.appName}</span>
     </Link>
   );
 }
@@ -168,12 +171,18 @@ export function PublicLayout() {
       </header>
 
       <main className="flex-1 pb-20 md:pb-0">
+        <AdSlot slot="site_top" className="container-page mt-4" />
         <Outlet />
+        <AdSlot slot="site_bottom" className="container-page mt-10" />
       </main>
+      <AdsRuntime />
 
       <footer className="mt-12 hidden border-t border-line py-8 text-sm text-muted md:block">
         <div className="container-page flex flex-wrap items-center justify-between gap-4">
-          <p>© {new Date().getFullYear()} {env.appName}. Bản dịch thuộc về các nhóm dịch.</p>
+          <div className="flex items-center gap-3">
+            <img src="/brand/monogram.webp" alt="" width={26} height={32} className="h-8 w-auto" loading="lazy" />
+            <p>© {new Date().getFullYear()} {env.appName}. Bản dịch thuộc về các nhóm dịch.</p>
+          </div>
           <nav className="flex gap-4" aria-label="Liên kết cuối trang">
             <Link className="hover:text-ink" to={paths.browse}>Danh sách truyện</Link>
             <Link className="hover:text-ink" to={paths.houses}>Nhóm dịch</Link>
