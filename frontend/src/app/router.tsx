@@ -1,5 +1,7 @@
 import { lazy, Suspense, type ComponentType } from 'react';
-import { createBrowserRouter, Outlet, useRouteError } from 'react-router';
+import { createBrowserRouter, Navigate, Outlet, useRouteError } from 'react-router';
+import { useAuth } from '@/features/auth/AuthProvider';
+import { paths } from './paths';
 import { ErrorState } from '@/components/ui';
 import { FullPageSpinner, RequireAuth } from '@/features/auth/guards';
 import { LoginPage, RegisterPage, ChangePasswordPage } from '@/features/auth/AuthPages';
@@ -39,11 +41,22 @@ function RouteError() {
   );
 }
 
+/**
+ * /workspace: where an earlier deployment redirected the workspace/admin URLs (a cached permanent redirect in some
+ * browsers). Send the visitor to the area they most likely wanted.
+ */
+function WorkspaceRedirect() {
+  const { user, houses } = useAuth();
+  const target = houses.length === 0 && user?.systemRole === 'systemAdmin' ? paths.admin.root : paths.studio.root;
+  return <Navigate to={target} replace />;
+}
+
 export const router = createBrowserRouter([
   {
     errorElement: <RouteError />,
     children: [
       { path: '/doc/:chapterId', element: lazyNamed(reader, 'ReaderPage') },
+      { path: '/workspace', element: <RequireAuth><WorkspaceRedirect /></RequireAuth> },
       {
         element: <PublicLayout />,
         children: [

@@ -18,7 +18,7 @@ const ADSENSE_END = '<!-- adsense:end -->';
 /**
  * Google AdSense: the tag must sit literally in <head> of the served HTML (Google verifies the site from it), so it is
  * injected into dist/index.html at build time. dist/workspace.html is the same page WITHOUT it and is served for the
- * ad-free house workspace and admin console (public/_redirects). PUBLIC_ADSENSE_CLIENT="" disables it (E2E builds).
+ * ad-free house workspace and admin console (functions/quan-tri, functions/quan-ly-nhom). PUBLIC_ADSENSE_CLIENT="" disables it (E2E builds).
  */
 function adsense(client: string): Plugin {
   let outDir = 'dist';

@@ -39,9 +39,11 @@ Notes:
   (`frontend/vite.config.ts`), which is what AdSense's ownership check and every public page receive.
   Override with `PUBLIC_ADSENSE_CLIENT=ca-pub-…`, or set it to an empty value to build without AdSense.
 - `public/ads.txt` declares the publisher (`google.com, pub-9474823258875185, DIRECT, f08c47fec0942fa0`).
-- The build also writes `dist/workspace.html` — the same page **without** the tag — and `public/_redirects` serves it for
-  `/quan-ly-nhom/*` and `/quan-tri/*`, so the workspace and admin console stay ad-free. Moving from a public page to
-  those areas inside the app forces one reload so the ad-free page is served.
+- The build also writes `dist/workspace.html` — the same page **without** the tag. Pages Functions
+  (`frontend/functions/quan-tri/[[path]].ts`, `frontend/functions/quan-ly-nhom/[[path]].ts`) serve it with status 200 at
+  `/quan-tri/*` and `/quan-ly-nhom/*`, so the workspace and admin console stay ad-free. (Not a `_redirects` rewrite: Pages'
+  pretty URLs turn a rewrite to `/workspace.html` into a redirect to `/workspace`.) Moving from a public page to those
+  areas inside the app forces one reload so the ad-free page is served.
 
 ## 2. Verified views (anti-inflation)
 
