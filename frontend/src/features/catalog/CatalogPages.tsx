@@ -39,6 +39,23 @@ export function HomePage() {
 
   return (
     <div className="container-page">
+      <section className="mt-6 rounded-2xl border border-line bg-surface p-5 sm:p-6" aria-labelledby="home-intro-title">
+        <h1 id="home-intro-title" className="text-2xl font-bold leading-tight sm:text-3xl">
+          Rồng Nhỏ – Đọc truyện tranh online
+        </h1>
+        <p className="mt-3 max-w-4xl text-sm leading-7 text-muted sm:text-base">
+          Chào mừng bạn đến với Rồng Nhỏ, nơi khám phá và đọc truyện tranh được dịch sang tiếng Việt bởi các nhóm dịch.
+          Bạn có thể tìm truyện mới, xem danh sách chương, theo dõi những bộ truyện yêu thích và quay lại đọc khi có cập nhật.
+        </p>
+        <p className="mt-2 max-w-4xl text-sm leading-7 text-muted sm:text-base">
+          Truyện được sắp xếp theo nội dung, thể loại và tình trạng cập nhật để bạn dễ tìm kiếm.
+          Hãy bắt đầu từ danh sách truyện hoặc khám phá các nhóm dịch đang đăng tải tác phẩm trên Rồng Nhỏ.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm">
+          <Link className="font-medium text-accent hover:underline" to={paths.browse}>Khám phá danh sách truyện</Link>
+          <Link className="font-medium text-accent hover:underline" to={paths.houses}>Tìm hiểu các nhóm dịch</Link>
+        </div>
+      </section>
       <Section title="Mới cập nhật" icon={<Sparkles className="h-5 w-5" />} link={paths.browse}>
         {updated.isError ? (
           <ErrorState error={updated.error} onRetry={() => updated.refetch()} />
@@ -55,7 +72,7 @@ export function HomePage() {
             {newest.data?.items.length === 0 ? <p className="text-sm text-muted">Chưa có truyện.</p> : <ComicGrid comics={newest.data?.items} loading={newest.isLoading} count={6} />}
           </Section>
           <Section title="Đã hoàn thành" icon={<CheckCircle2 className="h-5 w-5" />} link={`${paths.browse}?status=completed`}>
-            {completed.data?.items.length === 0 ? <p className="text-sm text-muted">Chưa có truyện hoàn thành.</p> : <ComicGrid comics={completed.data?.items} loading={completed.isLoading} count={6} />}
+            {completed.data?.items.length === 0 ? <p className="text-sm text-muted">Chưa có truyện.</p> : <ComicGrid comics={completed.data?.items} loading={completed.isLoading} count={6} />}
           </Section>
         </div>
         <aside>
@@ -185,54 +202,38 @@ export function HousesPage() {
   );
 }
 
-export function HouseLogo({ url, name, size = 'md' }: { url: string | null; name: string; size?: 'md' | 'lg' }) {
-  const cls = size === 'lg' ? 'h-20 w-20 text-2xl' : 'h-14 w-14 text-lg';
-  return url ? (
-    <img src={url} alt={`Logo ${name}`} className={`${cls} shrink-0 rounded-2xl object-cover`} loading="lazy" />
-  ) : (
-    <span className={`${cls} grid shrink-0 place-items-center rounded-2xl bg-accent-soft font-bold text-accent`}>{name.slice(0, 1).toUpperCase()}</span>
-  );
+export function HouseLogo({ url, name, size = 'md' }: { url?: string | null; name: string; size?: 'sm' | 'md' | 'lg' }) {
+  const classes = size === 'sm' ? 'h-8 w-8 text-xs' : size === 'lg' ? 'h-14 w-14 text-lg' : 'h-11 w-11 text-sm';
+  return url ? <img src={url} alt={name} className={`${classes} rounded-xl object-cover`} /> : <span className={`${classes} grid place-items-center rounded-xl bg-accent-soft font-semibold text-accent`}>{name.slice(0, 1).toUpperCase()}</span>;
 }
 
 export function HousePage() {
   const { slug = '' } = useParams();
-  const [params, setParams] = useSearchParams();
-  const page = Number(params.get('page') ?? '1') || 1;
-  const house = useQuery({ queryKey: ['house-public', slug], queryFn: () => publicApi.house(slug) });
-  const comics = useQuery({ queryKey: ['comics', { house: slug, page }], queryFn: () => publicApi.comics({ house: slug, page, pageSize: 24 }), placeholderData: keepPreviousData });
-  useDocumentTitle(house.data?.name);
-
-  if (house.isError) return <div className="container-page py-10"><ErrorState error={house.error} onRetry={() => house.refetch()} /></div>;
-  const h = house.data;
+  const house = useQuery({ queryKey: ['house', slug], queryFn: () => publicApi.house(slug) });
+  useDocumentTitle(house.data?.name ?? 'Nhóm dịch');
+  if (house.isError) return <div className="container-page py-10"><ErrorState error={house.error} title="Không tìm thấy nhóm dịch" onRetry={() => house.refetch()} /></div>;
   return (
     <div className="container-page py-6">
-      <div className="card mb-8 flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
-        {h ? <HouseLogo url={h.logoUrl} name={h.name} size="lg" /> : <Skeleton className="h-20 w-20 rounded-2xl" />}
-        <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-semibold">{h?.name ?? '…'}</h1>
-          {h?.description && <p className="mt-1 text-sm text-muted">{h.description}</p>}
-          <div className="mt-2 flex flex-wrap gap-3 text-sm">
-            {h?.links.facebook && <a className="link" href={h.links.facebook} target="_blank" rel="noopener noreferrer nofollow">Facebook</a>}
-            {h?.links.discord && <a className="link" href={h.links.discord} target="_blank" rel="noopener noreferrer nofollow">Discord</a>}
-            {h?.links.website && <a className="link" href={h.links.website} target="_blank" rel="noopener noreferrer nofollow">Trang web</a>}
+      {house.data ? (
+        <>
+          <div className="card flex items-center gap-4 p-5">
+            <HouseLogo url={house.data.logoUrl} name={house.data.name} size="lg" />
+            <div className="min-w-0">
+              <h1 className="text-2xl font-semibold">{house.data.name}</h1>
+              <p className="mt-1 text-sm text-muted">{house.data.description || `Nhóm dịch ${house.data.name} trên ${import.meta.env.PUBLIC_APP_NAME || 'Trạm Truyện'}.`}</p>
+              <p className="mt-1 text-xs text-muted">{house.data.comicCount} truyện</p>
+            </div>
           </div>
-        </div>
-      </div>
-      <h2 className="mb-4 text-lg font-semibold">Truyện của nhóm</h2>
-      {comics.data?.items.length === 0 ? <EmptyState title="Nhóm chưa đăng truyện nào" /> : <ComicGrid comics={comics.data?.items} loading={comics.isLoading} />}
-      {comics.data && <Pagination page={comics.data.page} totalPages={comics.data.totalPages} onChange={(p) => setParams({ page: String(p) })} />}
+          <Section title="Truyện của nhóm" icon={<BookOpen className="h-5 w-5" />}>
+            <ComicGrid comics={house.data.comics} count={12} />
+          </Section>
+        </>
+      ) : <Skeleton className="h-40 w-full rounded-2xl" />}
     </div>
   );
 }
 
 export function NotFoundPage() {
-  useDocumentTitle('Không tìm thấy');
-  return (
-    <div className="container-page flex min-h-[60dvh] flex-col items-center justify-center gap-4 text-center">
-      <p className="text-6xl font-bold text-accent">404</p>
-      <h1 className="text-xl font-semibold">Không tìm thấy trang</h1>
-      <p className="text-sm text-muted">Đường dẫn có thể đã thay đổi hoặc nội dung đã bị gỡ.</p>
-      <ButtonLink to={paths.home} variant="outline">Về trang chủ</ButtonLink>
-    </div>
-  );
+  useDocumentTitle('Không tìm thấy trang');
+  return <div className="container-page py-16 text-center"><h1 className="text-2xl font-semibold">Không tìm thấy trang</h1><p className="mt-2 text-muted">Đường dẫn có thể đã thay đổi hoặc không tồn tại.</p><div className="mt-6"><ButtonLink to={paths.home}>Về trang chủ</ButtonLink></div></div>;
 }
