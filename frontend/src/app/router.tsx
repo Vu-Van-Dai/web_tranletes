@@ -19,6 +19,7 @@ function lazyNamed<T>(load: () => Promise<T>, name: keyof T) {
   );
 }
 
+const infoPages = () => import('@/features/info/SiteInfoPages');
 const reader = () => import('@/features/reader/ReaderPage');
 const library = () => import('@/features/library/LibraryPage');
 const house = () => import('@/features/house/HouseLayout');
@@ -66,6 +67,11 @@ export const router = createBrowserRouter([
           { path: 'the-loai/:slug', element: <BrowsePage mode="genre" /> },
           { path: 'truyen/:id/:slug?', element: <ComicDetailPage /> },
           { path: 'nhom-dich', element: <HousesPage /> },
+          { path: 'gioi-thieu', element: lazyNamed(infoPages, 'AboutPage') },
+          { path: 'chinh-sach-bao-mat', element: lazyNamed(infoPages, 'PrivacyPage') },
+          { path: 'lien-he', element: lazyNamed(infoPages, 'ContactPage') },
+          { path: 'dieu-khoan-su-dung', element: lazyNamed(infoPages, 'TermsPage') },
+          { path: 'faq', element: lazyNamed(infoPages, 'FaqPage') },
           { path: 'nhom-dich/:slug', element: <HousePage /> },
           { path: 'dang-nhap', element: <LoginPage /> },
           { path: 'dang-ky', element: <RegisterPage /> },
