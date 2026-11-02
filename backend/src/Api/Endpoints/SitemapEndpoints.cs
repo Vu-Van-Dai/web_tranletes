@@ -50,6 +50,11 @@ public static class SitemapEndpoints
                 await WriteUrl($"{SiteOrigin}/", DateTimeOffset.UtcNow);
                 await WriteUrl($"{SiteOrigin}/truyen", DateTimeOffset.UtcNow);
                 await WriteUrl($"{SiteOrigin}/nhom-dich", DateTimeOffset.UtcNow);
+                await WriteUrl($"{SiteOrigin}/gioi-thieu", null);
+                await WriteUrl($"{SiteOrigin}/chinh-sach-bao-mat", null);
+                await WriteUrl($"{SiteOrigin}/lien-he", null);
+                await WriteUrl($"{SiteOrigin}/dieu-khoan-su-dung", null);
+                await WriteUrl($"{SiteOrigin}/faq", null);
 
                 foreach (var comic in comics)
                 {
