@@ -177,15 +177,26 @@ export function PublicLayout() {
       </main>
       <AdsRuntime />
 
-      <footer className="mt-12 hidden border-t border-line py-8 text-sm text-muted md:block">
-        <div className="container-page flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <img src="/brand/monogram.webp" alt="" width={26} height={32} className="h-8 w-auto" loading="lazy" />
-            <p>© {new Date().getFullYear()} {env.appName}. Bản dịch thuộc về các nhóm dịch.</p>
+      <footer className="mt-12 border-t border-line bg-surface py-8 pb-24 text-sm text-muted md:pb-8">
+        <div className="container-page grid gap-7 lg:grid-cols-[1fr_auto] lg:gap-12">
+          <div className="max-w-lg space-y-3">
+            <div className="flex items-center gap-3">
+              <img src="/brand/monogram.webp" alt="" width={26} height={32} className="h-8 w-auto" loading="lazy" />
+              <span className="text-base font-semibold text-ink">{env.appName}</span>
+            </div>
+            <p className="leading-6">Khám phá truyện tranh dịch tiếng Việt, theo dõi chương mới và tìm hiểu những nhóm dịch đang chia sẻ tác phẩm trên Rồng Nhỏ.</p>
+            <p className="text-xs">© {new Date().getFullYear()} {env.appName}. Quyền đối với tác phẩm gốc thuộc chủ sở hữu tương ứng.</p>
           </div>
-          <nav className="flex gap-4" aria-label="Liên kết cuối trang">
-            <Link className="hover:text-ink" to={paths.browse}>Danh sách truyện</Link>
-            <Link className="hover:text-ink" to={paths.houses}>Nhóm dịch</Link>
+          <nav aria-label="Thông tin và chính sách" className="flex flex-col gap-3">
+            <p className="font-semibold text-ink">Thông tin & hỗ trợ</p>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
+              <Link className="hover:text-ink hover:underline" to={paths.about}>Giới thiệu</Link>
+              <Link className="hover:text-ink hover:underline" to={paths.privacy}>Chính sách bảo mật</Link>
+              <Link className="hover:text-ink hover:underline" to={paths.contact}>Liên hệ</Link>
+              <Link className="hover:text-ink hover:underline" to={paths.terms}>Điều khoản sử dụng</Link>
+              <Link className="hover:text-ink hover:underline" to={paths.faq}>FAQ</Link>
+            </div>
+            <a className="break-all hover:text-ink hover:underline" href="mailto:rongnhotranlation@gmail.com">rongnhotranlation@gmail.com</a>
           </nav>
         </div>
       </footer>
