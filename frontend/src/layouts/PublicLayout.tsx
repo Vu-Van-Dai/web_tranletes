@@ -184,7 +184,7 @@ export function PublicLayout() {
               <img src="/brand/monogram.webp" alt="" width={26} height={32} className="h-8 w-auto" loading="lazy" />
               <span className="text-base font-semibold text-ink">{env.appName}</span>
             </div>
-            <p className="leading-6">Khám phá truyện tranh dịch tiếng Việt, theo dõi chương mới và tìm hiểu những nhóm dịch đang chia sẻ tác phẩm trên Rồng Nhỏ.</p>
+            <p className="leading-6">Mọi thông tin và hình ảnh trên website đều được sưu tầm trên Internet. Chúng tôi không sở hữu hay chịu trách nhiệm bất kỳ thông tin nào trên web này. Nếu làm ảnh hưởng đến cá nhân hay tổ chức nào, khi được yêu cầu, chúng tôi sẽ xem xét và gỡ bỏ ngay lập tức.</p>
             <p className="text-xs">© {new Date().getFullYear()} {env.appName}. Quyền đối với tác phẩm gốc thuộc chủ sở hữu tương ứng.</p>
           </div>
           <nav aria-label="Thông tin và chính sách" className="flex flex-col gap-3">
