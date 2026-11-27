@@ -22,7 +22,9 @@
     "/quan-tri",
     "/quan-tri/*",
     "/quan-ly-nhom",
-    "/quan-ly-nhom/*"
+    "/quan-ly-nhom/*",
+    "/doc",
+    "/the-loai"
   ],
   "exclude": []
 }

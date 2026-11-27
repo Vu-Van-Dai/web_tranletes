@@ -41,6 +41,7 @@ export function ReaderPage() {
     canonical: data ? paths.read(data.chapter.id) : undefined,
     mature: data?.chapter.isMature,
     noindex: reader.isError || data?.chapter.isMature,
+    pending: reader.isPending,
   });
 
   if (reader.isError) {

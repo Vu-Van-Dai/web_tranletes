@@ -30,14 +30,17 @@ export function useTheme() {
   return { theme, toggle };
 }
 
-export function useDocumentTitle(title: string | undefined, seo?: { description?: string | null; canonical?: string; image?: string | null; mature?: boolean; noindex?: boolean }) {
+export function useDocumentTitle(title: string | undefined, seo?: { description?: string | null; canonical?: string; image?: string | null; mature?: boolean; noindex?: boolean; pending?: boolean }) {
   const { pathname, search } = useLocation();
   const description = seo?.description;
   const canonical = seo?.canonical;
   const image = seo?.image;
   const mature = seo?.mature;
   const noindex = seo?.noindex;
+  const pending = seo?.pending;
   useEffect(() => {
+    // Keep the initial edge metadata intact while the API data is loading.
+    if (pending) return;
     const app = (import.meta.env.PUBLIC_APP_NAME as string | undefined) || 'Rồng Nhỏ';
     document.title = title ? `${title} · ${app}` : pathname === '/' ? 'Đọc truyện tranh online, truyện dịch tiếng Việt · Rồng Nhỏ' : app;
     const origin = 'https://rongnho.shop';
@@ -45,7 +48,7 @@ export function useDocumentTitle(title: string | undefined, seo?: { description?
     const page = Number(params.get('page') ?? 1);
     const pageSuffix = /^(\/truyen|\/the-loai\/[^/]+|\/nhom-dich\/[^/]+)$/.test(pathname) && Number.isSafeInteger(page) && page > 1 ? '?page=' + page : '';
     const blocked = /^(\/quan-tri|\/quan-ly-nhom|\/workspace|\/dang-nhap|\/dang-ky|\/doi-mat-khau|\/tu-truyen|\/tim-kiem)(\/|$)/.test(pathname);
-    const filtered = ['q', 'status', 'sort'].some(k => !!params.get(k) && !(k === 'sort' && params.get(k) === 'updated'));
+    const filtered = /^(\/truyen|\/the-loai\/[^/]+|\/nhom-dich\/[^/]+)$/.test(pathname) && ['q', 'status', 'sort'].some(k => !!params.get(k) && !(k === 'sort' && params.get(k) === 'updated'));
     const href = origin + (canonical ?? pathname + pageSuffix);
     let tag = document.querySelector<HTMLLinkElement>('link[rel="canonical"]');
     if (blocked) tag?.remove();
@@ -71,7 +74,7 @@ export function useDocumentTitle(title: string | undefined, seo?: { description?
     setMeta('name', 'twitter:title', document.title);
     setMeta('name', 'twitter:description', summary);
     setMeta('name', 'twitter:image', cover);
-  }, [title, pathname, search, description, canonical, image, mature, noindex]);
+  }, [title, pathname, search, description, canonical, image, mature, noindex, pending]);
 }
 
 export function useDebounced<T>(value: T, ms = 300): T {

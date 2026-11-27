@@ -10,6 +10,7 @@ describe('ad placement', () => {
     expect(isAdFreePath('/')).toBe(false);
     expect(isAdFreePath('/doc/123')).toBe(false);
     expect(isAdFreePath('/quan-tri-vien')).toBe(false);
+    for (const path of ['/dang-nhap', '/dang-ky', '/tu-truyen', '/lien-he', '/tim-kiem']) expect(isAdFreePath(path)).toBe(true);
   });
 
   it('maps public URLs to page groups', () => {

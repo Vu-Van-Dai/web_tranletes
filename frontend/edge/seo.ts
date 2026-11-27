@@ -154,6 +154,12 @@ export async function serveSeo(request: Request, env: { ASSETS: {fetch(input: st
   const status=meta.status??200;
   const headers=new Headers(shell.headers);
   for(const key of ['Content-Length','Content-Encoding','ETag','Last-Modified','Location','X-Robots-Tag'])headers.delete(key);
+  // Pages static _headers are not guaranteed on Function-generated responses.
+  headers.set('X-Content-Type-Options','nosniff');
+  headers.set('X-Frame-Options','DENY');
+  headers.set('Referrer-Policy','strict-origin-when-cross-origin');
+  headers.set('Permissions-Policy','camera=(), microphone=(), geolocation=()');
+  if (!headers.has('Content-Security-Policy')) headers.set('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' blob: data: https:; media-src 'self' https:; connect-src 'self' https:; frame-src https: blob: data:; font-src 'self' https: data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https:");
   headers.set('Content-Type','text/html; charset=utf-8');
   headers.set('Cache-Control',status===200&&!meta.noindex?'public, max-age=30':'no-store');
   if(meta.noindex)headers.set('X-Robots-Tag','noindex, follow');

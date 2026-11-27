@@ -243,7 +243,7 @@ export function HousePage() {
   const page = Number(params.get('page') ?? '1') || 1;
   const house = useQuery({ queryKey: ['house-public', slug], queryFn: () => publicApi.house(slug) });
   const comics = useQuery({ queryKey: ['comics', { house: slug, page }], queryFn: () => publicApi.comics({ house: slug, page, pageSize: 24 }), placeholderData: keepPreviousData });
-  useDocumentTitle(house.data?.name);
+  useDocumentTitle(house.data?.name, { description: house.data?.description, noindex: house.isError, pending: house.isPending });
 
   if (house.isError) return <div className="container-page py-10"><ErrorState error={house.error} onRetry={() => house.refetch()} /></div>;
   const h = house.data;
@@ -313,7 +313,7 @@ export function HousePage() {
 }
 
 export function NotFoundPage() {
-  useDocumentTitle('Không tìm thấy');
+  useDocumentTitle('Không tìm thấy', { noindex: true });
   return (
     <div className="container-page flex min-h-[60dvh] flex-col items-center justify-center gap-4 text-center">
       <p className="text-6xl font-bold text-accent">404</p>

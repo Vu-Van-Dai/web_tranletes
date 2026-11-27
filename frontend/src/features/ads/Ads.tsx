@@ -8,7 +8,7 @@ import { cn } from '@/utils/format';
 
 /*
  * Advertising runtime. Ads are configured by the SystemAdmin (/quan-tri/quang-cao) and delivered with /api/site.
- * They render on every public page and in the reader — for every visitor, signed in or not, house members included.
+ * Eligible public catalog and non-mature reader pages may render ads for visitors, including signed-in users.
  * The house workspace (/quan-ly-nhom) and the admin console (/quan-tri) are ad-free: nothing here is mounted
  * there, and a full reload is forced when entering them after network scripts were injected (see useAdFreeZone).
  */
@@ -49,7 +49,8 @@ function useAdEligibility() {
 }
 function useAdUnits(): AdUnit[] {
   const { enabled, group, site } = useAdEligibility();
-  return useMemo(() => (enabled ? (site.data?.ads?.units ?? []).filter(u => u.enabled && targets(u, group)) : []), [enabled, group, site.data]);
+  // Do not mix third-party placements with AdSense auto ads in the same deployment.
+  return useMemo(() => (enabled && !adsenseClient ? (site.data?.ads?.units ?? []).filter(u => u.enabled && targets(u, group)) : []), [enabled, group, site.data]);
 }
 
 // ---------------- Frequency capping (per browser; storage may be unavailable) ----------------

@@ -28,6 +28,7 @@ export function ComicDetailPage() {
     image: comic.data?.coverUrl,
     mature: comic.data?.isMature,
     noindex: comic.isError,
+    pending: comic.isPending,
   });
 
   const follow = useMutation({
