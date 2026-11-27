@@ -22,6 +22,17 @@ describe('edge public SEO',()=>{
     expect(html).not.toContain('href="https://rongnho.shop/"');
     expect(html).toContain('$&amp;');
   });
+  it('switches to friendly paths only when the backend advertises them',async()=>{
+    const friendly='/truyen/nhom/anh-nhin';
+    const api=async <T>(path:string):Promise<T> => (path.endsWith('/chapters')?[{id:chapter,number:1,title:null}]:{...comic,publicPath:friendly}) as T;
+    expect(await resolvePage(new URL('https://rongnho.shop'+canonical),api)).toEqual({redirect:friendly});
+    const meta=await resolvePage(new URL('https://rongnho.shop'+friendly),api);
+    if('redirect' in meta)throw Error('unexpected redirect');
+    const html=renderHtml(shell,meta);
+    expect(html).toContain('/doc/nhom/anh-nhin/chuong-1');
+    expect(html).toContain('BreadcrumbList');
+    expect(html).not.toContain('<script> ·');
+  });
   it('returns real 404 for missing API resources and 503 for transient failures',async()=>{
     const env={ASSETS:{fetch:async()=>new Response(shell,{headers:{'Content-Type':'text/html'}})}};
     const request=new Request('https://rongnho.shop'+canonical);

@@ -1,0 +1,51 @@
+name: Backend and image cache checks
+on:
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'cloudflare-worker/**'
+      - '.github/workflows/backend-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  catalog:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: ci-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      TEST_DATABASE_CONNECTION_STRING: Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=ci-only-password
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: backend/global.json
+      - run: dotnet build ComicPlatform.slnx --configuration Release
+      - run: dotnet test tests/IntegrationTests/ComicPlatform.IntegrationTests.csproj --configuration Release --no-build --filter 'FullyQualifiedName~PublicCatalogTests|FullyQualifiedName~AdsProviderTests'
+  image-cache:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloudflare-worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: cloudflare-worker/package-lock.json
+      - run: npm ci
+      - run: npm test

@@ -42,6 +42,32 @@ public class PublicCatalogTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal(1, house.Int("comicCount"));
         Assert.Contains((await anon.GetAsync("/api/tags")).Items(), t => t.Str("slug") == "hanh-dong");
 
+        var detail = await anon.GetAsync($"/api/comics/{comicId}");
+        var slug = detail.Str("slug");
+        var friendlyComic = $"/api/comics/by-slug/meo-dich-truyen/{slug}";
+        var friendlyChapter = $"/api/chapters/by-slug/meo-dich-truyen/{slug}/1";
+        Assert.Equal($"/truyen/meo-dich-truyen/{slug}", detail.Str("publicPath"));
+        var friendlyDetail = await anon.GetAsync(friendlyComic);
+        var friendlySummary = await anon.GetAsync(friendlyChapter);
+        Assert.Equal(comicId, friendlyDetail.Id());
+        Assert.Equal(ch1, friendlySummary.Id());
+        Assert.Equal($"/doc/meo-dich-truyen/{slug}/chuong-1", friendlySummary.Str("publicPath"));
+        // Friendly lookup resolves exactly the existing UUID; package URL and checksum remain identical.
+        var legacyReader = await anon.GetAsync($"/api/chapters/{ch1}/reader");
+        var resolvedReader = await anon.GetAsync($"/api/chapters/{friendlySummary.Id()}/reader");
+        Assert.Equal(legacyReader.GetProperty("package").GetRawText(), resolvedReader.GetProperty("package").GetRawText());
+        await anon.ProblemAsync(HttpMethod.Get, friendlyChapter + ".5", null, HttpStatusCode.NotFound);
+        await anon.ProblemAsync(HttpMethod.Get, $"/api/comics/by-slug/khong-ton-tai/{slug}", null, HttpStatusCode.NotFound);
+        var sitemap = await anon.Http.GetStringAsync("/sitemap.xml");
+        Assert.Contains($"/truyen/{comicId}/{slug}", sitemap);
+        Assert.Contains($"/doc/{ch1}", sitemap);
+        Assert.Contains("/the-loai/hanh-dong", sitemap);
+        Assert.Contains("/nhom-dich/meo-dich-truyen", sitemap);
+        var friendlySitemap = await anon.Http.GetStringAsync("/sitemap.xml?friendly=true");
+        Assert.Contains($"/truyen/meo-dich-truyen/{slug}", friendlySitemap);
+        Assert.Contains($"/doc/meo-dich-truyen/{slug}/chuong-1", friendlySitemap);
+        Assert.DoesNotContain($"/truyen/{comicId}/", friendlySitemap);
+
         // Chapter navigation.
         var reader1 = await anon.GetAsync($"/api/chapters/{ch1}/reader");
         Assert.Equal(ch2, reader1.GetProperty("chapter").GetProperty("next").Id());
@@ -53,6 +79,9 @@ public class PublicCatalogTests(ApiFactory factory) : IClassFixture<ApiFactory>
         await admin.PostAsync($"/api/admin/translation-houses/{houseId}/suspend", new { reason = "Vi phạm bản quyền" });
         await anon.ProblemAsync(HttpMethod.Get, $"/api/comics/{comicId}", null, HttpStatusCode.NotFound);
         await anon.ProblemAsync(HttpMethod.Get, $"/api/chapters/{ch1}/reader", null, HttpStatusCode.NotFound);
+        await anon.ProblemAsync(HttpMethod.Get, friendlyComic, null, HttpStatusCode.NotFound);
+        await anon.ProblemAsync(HttpMethod.Get, friendlyChapter, null, HttpStatusCode.NotFound);
+        Assert.DoesNotContain($"/doc/{ch1}", await anon.Http.GetStringAsync("/sitemap.xml"));
         Assert.Equal("house_suspended", await owner.ProblemAsync(HttpMethod.Get, "/api/translation-house/comics", null, HttpStatusCode.Forbidden));
 
         await admin.PostAsync($"/api/admin/translation-houses/{houseId}/activate");
@@ -284,5 +313,38 @@ public class RateLimitTests(RateLimitedApiFactory factory) : IClassFixture<RateL
             using var r = await client.SendAsync(HttpMethod.Post, "/api/auth/refresh", new { });
             Assert.Equal(HttpStatusCode.NoContent, r.StatusCode);
         }
+    }
+}
+
+
+public class AdsProviderTests(ApiFactory factory) : IClassFixture<ApiFactory>
+{
+    [Fact]
+    public async Task Provider_switches_and_script_approval_filter_public_ads_and_reports_stay_private()
+    {
+        var s = new Scenario(factory);
+        var admin = await s.AdminAsync();
+        var anon = s.Anonymous();
+        var config = new
+        {
+            enabled = true,
+            providerEnabled = new Dictionary<string, bool> { ["adsterra"] = false },
+            allowDirectScripts = false,
+            reports = new[] { new { provider = "direct", month = "2026-11", currency = "USD", impressions = 1000, revenue = 1.5m } },
+            units = new object[]
+            {
+                new { id = "direct", name = "Direct", enabled = true, format = "banner", provider = "direct", imageUrl = "https://example.com/ad.png", targetUrl = "https://example.com", slots = new[] { "home_top" } },
+                new { id = "disabled", name = "Disabled", enabled = true, format = "banner", provider = "adsterra", html = "<div>Ad</div>", slots = new[] { "home_top" } },
+                new { id = "script", name = "Script", enabled = true, format = "script", provider = "custom", html = "<script>void 0</script>", scriptApproved = true }
+            }
+        };
+        var saved = await admin.PutAsync("/api/admin/ads", config);
+        Assert.Equal(2, saved.Int("schemaVersion"));
+        Assert.Single(saved.GetProperty("reports").EnumerateArray());
+        var site = (await anon.GetAsync("/api/site")).GetProperty("ads");
+        Assert.Single(site.GetProperty("units").EnumerateArray());
+        Assert.Equal("direct", site.GetProperty("units")[0].Str("id"));
+        Assert.True(!site.TryGetProperty("reports", out var report) || report.ValueKind == System.Text.Json.JsonValueKind.Null);
+        await anon.ProblemAsync(HttpMethod.Get, "/api/admin/ads", null, HttpStatusCode.Unauthorized);
     }
 }

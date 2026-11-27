@@ -7,7 +7,7 @@ export async function onRequest(context: {
   const apiBase = (context.env.PUBLIC_API_URL || "https://api.rongnho.shop").replace(/\/+$/, "");
 
   try {
-    const upstream = await fetch(`${apiBase}/sitemap.xml`, {
+    const upstream = await fetch(`${apiBase}/sitemap.xml?friendly=true`, {
       headers: { Accept: "application/xml" },
     });
 

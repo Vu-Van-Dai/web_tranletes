@@ -7,6 +7,7 @@ import { FullPageSpinner, RequireAuth } from '@/features/auth/guards';
 import { LoginPage, RegisterPage, ChangePasswordPage } from '@/features/auth/AuthPages';
 import { BrowsePage, HomePage, HousePage, HousesPage, NotFoundPage } from '@/features/catalog/CatalogPages';
 import { ComicDetailPage } from '@/features/catalog/ComicDetailPage';
+import { AdNavigationBoundary } from '@/features/ads/Ads';
 import { PublicLayout } from '@/layouts/PublicLayout';
 
 /** Lazy route groups: admin, house workspace and reader code is not shipped to every visitor. */
@@ -55,7 +56,9 @@ function WorkspaceRedirect() {
 export const router = createBrowserRouter([
   {
     errorElement: <RouteError />,
+    element: <AdNavigationBoundary />,
     children: [
+      { path: '/doc/:houseSlug/:comicSlug/:chapterNumber', element: lazyNamed(reader, 'ReaderPage') },
       { path: '/doc/:chapterId', element: lazyNamed(reader, 'ReaderPage') },
       { path: '/workspace', element: <RequireAuth><WorkspaceRedirect /></RequireAuth> },
       {

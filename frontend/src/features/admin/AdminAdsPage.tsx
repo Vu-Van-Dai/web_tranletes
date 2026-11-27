@@ -5,7 +5,9 @@ import { Badge, Button, Checkbox, ConfirmDialog, EmptyState, ErrorState, Field, 
 import { useDocumentTitle } from '@/hooks/useTheme';
 import { adminApi } from '@/services/api';
 import { ApiError } from '@/services/http';
-import type { AdFormat, AdPage, AdSlot, AdUnit, AdsConfig } from '@/types/api';
+import type { AdFormat, AdPage, AdSlot, AdUnit, AdsConfig, AdProvider, AdProviderReport } from '@/types/api';
+
+import { providerLabels, providerOf } from '@/features/ads/providers';
 
 const formatLabel: Record<AdFormat, string> = {
   banner: 'Banner trong trang',
@@ -47,6 +49,8 @@ const pageLabel: Record<AdPage, string> = {
 const emptyUnit = (): AdUnit => ({
   id: `ad-${Math.random().toString(36).slice(2, 10)}`,
   name: '',
+  provider: 'direct',
+  scriptApproved: false,
   enabled: true,
   format: 'banner',
   imageUrl: null,
@@ -122,6 +126,7 @@ export function AdminAdsPage() {
             <Checkbox label="Bật quảng cáo trên toàn trang" description="Tắt quảng cáo khi cấu hình mới được đồng bộ (tối đa khoảng 60 giây với trang đang mở), không xoá cấu hình."
               checked={config.enabled} onChange={(e) => update({ ...config, enabled: e.target.checked })} data-testid="ads-enabled" />
           </div>
+          {config.schemaVersion === 2 ? <ProviderSettings config={config} update={update} /> : <p className="card p-4 text-sm text-muted">Quản lý theo nhà cung cấp sẽ khả dụng sau khi backend được cập nhật.</p>}
           {config.units.length === 0 ? (
             <EmptyState title="Chưa có quảng cáo nào" description="Thêm banner, pop-up, tab mới hoặc mã của mạng quảng cáo." />
           ) : (
@@ -130,7 +135,7 @@ export function AdminAdsPage() {
                 <li key={u.id} className="card flex flex-wrap items-center gap-3 p-4">
                   {u.imageUrl ? <img src={u.imageUrl} alt="" className="h-12 w-20 shrink-0 rounded-lg object-cover" /> : <span className="grid h-12 w-20 shrink-0 place-items-center rounded-lg bg-surface-2 text-xs text-muted">{u.html ? 'HTML' : '—'}</span>}
                   <div className="min-w-0 flex-1">
-                    <p className="flex flex-wrap items-center gap-2 font-medium">{u.name}<Badge tone="accent">{formatLabel[u.format]}</Badge>{!u.enabled && <Badge>Đang tắt</Badge>}</p>
+                    <p className="flex flex-wrap items-center gap-2 font-medium">{u.name}<Badge tone="accent">{formatLabel[u.format]}</Badge><Badge>{providerLabels[providerOf(u)]}</Badge>{!u.enabled && <Badge>Đang tắt</Badge>}</p>
                     <p className="truncate text-xs text-muted">{describe(u)}</p>
                   </div>
                   <Checkbox label="Bật" checked={u.enabled} onChange={(e) => upsert({ ...u, enabled: e.target.checked })} />
@@ -150,7 +155,7 @@ export function AdminAdsPage() {
           </section>
         </div>
       )}
-      {editing && <AdEditor unit={editing} onCancel={() => setEditing(null)} onSave={upsert} />}
+      {editing && <AdEditor unit={editing} providerSettings={config?.schemaVersion === 2} onCancel={() => setEditing(null)} onSave={upsert} />}
       <ConfirmDialog open={deleting !== null} danger title="Xoá quảng cáo" confirmLabel="Xoá"
         message={<>Xoá <strong>{deleting?.name}</strong>? Nhớ bấm “Lưu thay đổi” sau đó.</>}
         onClose={() => setDeleting(null)}
@@ -169,7 +174,7 @@ function toggle<T>(list: T[] | null, value: T, on: boolean): T[] {
   return [...set];
 }
 
-function AdEditor({ unit, onCancel, onSave }: { unit: AdUnit; onCancel: () => void; onSave: (u: AdUnit) => void }) {
+function AdEditor({ unit, providerSettings, onCancel, onSave }: { unit: AdUnit; providerSettings: boolean; onCancel: () => void; onSave: (u: AdUnit) => void }) {
   const toast = useToast();
   const [u, setU] = useState<AdUnit>(unit);
   const [creative, setCreative] = useState<'image' | 'html'>(unit.html && !unit.imageUrl ? 'html' : 'image');
@@ -186,6 +191,7 @@ function AdEditor({ unit, onCancel, onSave }: { unit: AdUnit; onCancel: () => vo
     const clean: AdUnit = {
       ...u,
       name: u.name.trim(),
+      scriptApproved: u.format === 'script' && u.scriptApproved === true,
       imageUrl: hasCreative && creative === 'image' ? u.imageUrl : null,
       html: (hasCreative && creative === 'html') || u.format === 'script' ? u.html : null,
       targetUrl: (hasCreative && creative === 'image') || u.format === 'newtab' ? u.targetUrl : null,
@@ -201,13 +207,15 @@ function AdEditor({ unit, onCancel, onSave }: { unit: AdUnit; onCancel: () => vo
           <Field label="Tên (chỉ quản trị thấy)" required>{(id) => <Input id={id} value={u.name} maxLength={100} onChange={(e) => set({ name: e.target.value })} data-testid="ad-name" />}</Field>
           <Field label="Loại quảng cáo">
             {(id) => (
-              <Select id={id} value={u.format} onChange={(e) => set({ format: e.target.value as AdFormat })} data-testid="ad-format">
+              <Select id={id} value={u.format} onChange={(e) => set({ format: e.target.value as AdFormat, scriptApproved: false })} data-testid="ad-format">
                 {Object.entries(formatLabel).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </Select>
             )}
           </Field>
         </div>
+        {providerSettings && <Field label="Nhà cung cấp">{(id) => <Select id={id} value={providerOf(u)} onChange={e => set({provider:e.target.value as AdProvider, scriptApproved:false})}>{Object.entries(providerLabels).filter(([p]) => p !== 'adsense').map(([p,label]) => <option key={p} value={p}>{label}</option>)}</Select>}</Field>}
         <p className="rounded-xl bg-surface-2 px-3 py-2 text-sm text-muted">{formatHint[u.format]}</p>
+        {providerSettings && u.format === 'script' && <Checkbox label="Đã kiểm tra mã, nguồn cung cấp và danh mục quảng cáo hợp pháp" description="Mã chạy với quyền của trang web; chỉ bật sau khi đã xác minh nguồn. Thay đổi mã sẽ hủy phê duyệt." checked={u.scriptApproved === true} onChange={e => set({scriptApproved:e.target.checked})} />}
 
         {hasCreative && (
           <div className="space-y-3">
@@ -234,7 +242,7 @@ function AdEditor({ unit, onCancel, onSave }: { unit: AdUnit; onCancel: () => vo
               </div>
             ) : (
               <Field label="Mã HTML của quảng cáo" hint="Chạy trong khung cách ly (iframe sandbox).">
-                {(id) => <Textarea id={id} rows={6} className="font-mono text-xs" value={u.html ?? ''} onChange={(e) => set({ html: e.target.value || null })} />}
+                {(id) => <Textarea id={id} rows={6} className="font-mono text-xs" value={u.html ?? ''} onChange={(e) => set({ html: e.target.value || null, scriptApproved: false })} />}
               </Field>
             )}
           </div>
@@ -255,7 +263,7 @@ function AdEditor({ unit, onCancel, onSave }: { unit: AdUnit; onCancel: () => vo
         )}
         {u.format === 'script' && (
           <Field label="Mã của mạng quảng cáo" required hint="Dán nguyên văn, kể cả thẻ <script>.">
-            {(id) => <Textarea id={id} rows={6} className="font-mono text-xs" value={u.html ?? ''} onChange={(e) => set({ html: e.target.value || null })} data-testid="ad-script" />}
+            {(id) => <Textarea id={id} rows={6} className="font-mono text-xs" value={u.html ?? ''} onChange={(e) => set({ html: e.target.value || null, scriptApproved: false })} data-testid="ad-script" />}
           </Field>
         )}
 
@@ -306,4 +314,31 @@ function AdEditor({ unit, onCancel, onSave }: { unit: AdUnit; onCancel: () => vo
       </div>
     </Modal>
   );
+}
+
+function ProviderSettings({ config, update }: { config: AdsConfig; update: (next: AdsConfig) => void }) {
+  const reports = config.reports ?? [];
+  const [entry, setEntry] = useState<AdProviderReport>({provider:'direct',month:new Date().toISOString().slice(0,7),currency:'USD',impressions:0,revenue:0});
+  const valid = /^\d{4}-(0[1-9]|1[0-2])$/.test(entry.month) && /^[A-Z]{3}$/.test(entry.currency) && Number.isSafeInteger(entry.impressions) && entry.impressions >= 0 && Number.isFinite(entry.revenue) && entry.revenue >= 0;
+  return <>
+    <section className="card space-y-3 p-4">
+      <h2 className="font-semibold">Nhà cung cấp quảng cáo</h2>
+      <p className="text-sm text-muted">Bật/tắt từng nhà cung cấp. Không có mạng quảng cáo nào được đăng ký tự động. Chỉ sử dụng nội dung hợp pháp, phù hợp mọi lứa tuổi; kiểm soát danh mục trong dashboard của nhà cung cấp.</p>
+      <div className="grid gap-3 sm:grid-cols-2">{Object.entries(providerLabels).map(([p,label]) => <Checkbox key={p} label={label} checked={config.providerEnabled?.[p as AdProvider] !== false} onChange={e => update({...config,providerEnabled:{...config.providerEnabled,[p]:e.target.checked}})} />)}</div>
+      <Checkbox label="Cho phép script bên thứ ba chạy trực tiếp" description="Mặc định tắt. Chỉ script đã được phê duyệt riêng mới được chạy; không dùng nếu banner iframe đáp ứng được yêu cầu." checked={config.allowDirectScripts === true} onChange={e => update({...config,allowDirectScripts:e.target.checked})} />
+    </section>
+    <section className="card space-y-3 p-4">
+      <h2 className="font-semibold">Đối soát doanh thu theo nhà cung cấp</h2>
+      <p className="text-sm text-muted">Nhập số liệu thực tế theo tháng từ dashboard nhà cung cấp. Không tự tính tiền từ lượt đọc truyện, không tự thay đổi doanh thu chia nhóm dịch và không cộng gộp các đơn vị tiền tệ.</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Nhà cung cấp">{id => <Select id={id} value={entry.provider} onChange={e => setEntry({...entry,provider:e.target.value as AdProvider})}>{Object.entries(providerLabels).map(([p,l]) => <option key={p} value={p}>{l}</option>)}</Select>}</Field>
+        <Field label="Tháng">{id => <Input id={id} type="month" value={entry.month} onChange={e => setEntry({...entry,month:e.target.value})}/>}</Field>
+        <Field label="Tiền tệ (ISO)">{id => <Input id={id} maxLength={3} value={entry.currency} onChange={e => setEntry({...entry,currency:e.target.value.toUpperCase()})}/>}</Field>
+        <Field label="Lượt hiển thị">{id => <Input id={id} type="number" min={0} step={1} value={entry.impressions} onChange={e => setEntry({...entry,impressions:Number(e.target.value)})}/>}</Field>
+        <Field label="Doanh thu báo cáo">{id => <Input id={id} type="number" min={0} step="any" value={entry.revenue} onChange={e => setEntry({...entry,revenue:Number(e.target.value)})}/>}</Field>
+      </div>
+      <Button variant="outline" disabled={!valid} onClick={() => update({...config,reports:[...reports.filter(r => !(r.provider===entry.provider && r.month===entry.month && r.currency===entry.currency)),entry]})}>Thêm / cập nhật số liệu</Button>
+      {reports.length > 0 && <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr><th className="text-left">Mạng / tháng</th><th className="text-right">Hiển thị</th><th className="text-right">Doanh thu</th><th></th></tr></thead><tbody>{reports.map((r,i) => <tr key={r.provider+r.month+r.currency} className="border-t border-line"><td className="py-2">{providerLabels[r.provider]} · {r.month}</td><td className="text-right">{r.impressions.toLocaleString('vi-VN')}</td><td className="text-right">{r.revenue.toLocaleString('vi-VN')} {r.currency}</td><td className="text-right"><Button variant="ghost" size="sm" onClick={() => setEntry(r)}>Sửa</Button><Button variant="ghost" size="sm" onClick={() => update({...config,reports:reports.filter((_,j)=>i!==j)})}>Xóa</Button></td></tr>)}</tbody></table></div>}
+    </section>
+  </>;
 }

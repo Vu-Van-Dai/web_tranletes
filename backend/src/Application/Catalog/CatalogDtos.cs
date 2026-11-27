@@ -1,4 +1,12 @@
+using System.Globalization;
+
 namespace ComicPlatform.Application.Catalog;
+
+internal static class PublicCatalogPaths
+{
+    public static string Comic(HouseRef house, string slug) => $"/truyen/{Uri.EscapeDataString(house.Slug)}/{Uri.EscapeDataString(slug)}";
+    public static string Chapter(HouseRef house, string slug, decimal number) => $"/doc/{Uri.EscapeDataString(house.Slug)}/{Uri.EscapeDataString(slug)}/chuong-{number.ToString("0.##", CultureInfo.InvariantCulture)}";
+}
 
 // ---------------- Shared ----------------
 public sealed record HouseRef(Guid Id, string Name, string Slug, string? LogoUrl);
@@ -19,7 +27,10 @@ public sealed record ComicCardDto(
     HouseRef House,
     int ChapterCount,
     DateTimeOffset? LastChapterPublishedAt,
-    IReadOnlyList<ChapterRef> LatestChapters);
+    IReadOnlyList<ChapterRef> LatestChapters)
+{
+    public string PublicPath => PublicCatalogPaths.Comic(House, Slug);
+}
 
 public sealed record ComicDetailDto(
     Guid Id,
@@ -38,7 +49,10 @@ public sealed record ComicDetailDto(
     ChapterRef? FirstChapter,
     ChapterRef? LatestChapter,
     DateTimeOffset? LastChapterPublishedAt,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt)
+{
+    public string PublicPath => PublicCatalogPaths.Comic(House, Slug);
+}
 
 public sealed record PublicChapterDto(Guid Id, decimal Number, string? Title, DateTimeOffset? PublishedAt, int PageCount);
 
@@ -54,7 +68,10 @@ public sealed record ChapterSummaryDto(
     int PageCount,
     ChapterRef? Prev,
     ChapterRef? Next,
-    HouseRef House);
+    HouseRef House)
+{
+    public string PublicPath => PublicCatalogPaths.Chapter(House, ComicSlug, Number);
+}
 
 public sealed record ReaderPackageDto(string Url, int Version, long Size, string Sha256, int PageCount, int Format);
 

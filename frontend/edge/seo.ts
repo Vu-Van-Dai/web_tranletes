@@ -1,4 +1,5 @@
 // Public HTML generated at Cloudflare Pages; the API and database remain unchanged.
+import { comicLink, chapterLink, chapterRoute, chapterSummaryLink } from '../src/app/paths';
 import type { ComicCard, ComicDetail, PublicChapter, ChapterSummary, Paged, PublicHouse, TagWithCount } from '../src/types/api';
 
 export const ORIGIN = 'https://rongnho.shop';
@@ -15,8 +16,7 @@ const INFO: Record<string, [string, string]> = {
 };
 const PRIVATE = new Set(['/dang-nhap', '/dang-ky', '/doi-mat-khau', '/tu-truyen', '/tim-kiem']);
 export const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
-const comicPath = (c: {id: string; slug: string}) => '/truyen/' + encodeURIComponent(c.id) + '/' + encodeURIComponent(c.slug);
-const chapterPath = (id: string) => '/doc/' + encodeURIComponent(id);
+const comicPath = comicLink;
 const housePath = (slug: string) => '/nhom-dich/' + encodeURIComponent(slug);
 const link = (path: string, name: string) => '<a href="' + escapeHtml(path) + '">' + escapeHtml(name) + '</a>';
 const list = (links: string[]) => links.length ? '<ul>' + links.map(a => '<li>' + a + '</li>').join('') + '</ul>' : '';
@@ -27,7 +27,7 @@ const imageUrl = (raw: string | null | undefined) => {
   if (!raw) return DEFAULT_IMAGE;
   try { const u = new URL(raw, ORIGIN); return u.protocol === 'https:' ? u.href : DEFAULT_IMAGE; } catch { return DEFAULT_IMAGE; }
 };
-type Meta = { title: string; description: string; path?: string; body: string; noindex?: boolean; mature?: boolean; image?: string; status?: number };
+type Meta = { breadcrumbs?: {name:string;path:string}[]; title: string; description: string; path?: string; body: string; noindex?: boolean; mature?: boolean; image?: string; status?: number };
 type Result = Meta | { redirect: string };
 type Api = <T>(path: string) => Promise<T>;
 export class ApiFailure extends Error {
@@ -61,21 +61,27 @@ export async function resolvePage(url: URL, api: Api): Promise<Result> {
     return {title:'Đọc truyện tranh online, truyện dịch tiếng Việt',description:HOME_DESCRIPTION,path,body:para(HOME_DESCRIPTION)+list(data.items.map(c=>link(comicPath(c),c.translatedTitle)))};
   }
   if (parts[0] === 'truyen' && parts.length >= 2) {
-    if (parts.length > 3 || !UUID.test(parts[1] ?? '')) return missing();
-    const id=parts[1]!;
-    const c=await api<ComicDetail>('/api/comics/'+id);
+    if (parts.length > 3) return missing();
+    const legacy = UUID.test(parts[1] ?? '');
+    if (!legacy && (parts.length !== 3 || !SLUG.test(parts[1] ?? '') || !SLUG.test(parts[2] ?? ''))) return missing();
+    const c=await api<ComicDetail>(legacy ? '/api/comics/'+parts[1] : '/api/comics/by-slug/'+parts[1]+'/'+parts[2]);
+    const id=c.id;
     const canonical=comicPath(c);
     if (url.pathname!==canonical) return {redirect:canonical+url.search};
     const chapters=await api<PublicChapter[]>('/api/comics/'+id+'/chapters');
     const description=clean(c.description || ('Thông tin và danh sách chương truyện '+c.translatedTitle+' tại Rồng Nhỏ.'));
     const details=[c.originalTitle,c.author && 'Tác giả: '+c.author,c.artist && 'Họa sĩ: '+c.artist,c.isMature && 'Nội dung dành cho người trưởng thành'].filter(Boolean).map(para).join('');
-    return {title:c.translatedTitle, description,path:canonical, mature:c.isMature,image:c.isMature?DEFAULT_IMAGE:imageUrl(c.coverUrl),body:details+para(c.description)+para('Nhóm dịch: '+c.house.name)+link(housePath(c.house.slug),c.house.name)+list(c.tags.map(t=>link('/the-loai/'+encodeURIComponent(t.slug),t.name)))+'<h2>Danh sách chương</h2>'+list(chapters.map(ch=>link(chapterPath(ch.id),chapterLabel(ch))))};
+    return {title:c.translatedTitle, description,path:canonical,breadcrumbs:[{name:'Danh sách truyện',path:'/truyen'},{name:c.translatedTitle,path:canonical}], mature:c.isMature,image:c.isMature?DEFAULT_IMAGE:imageUrl(c.coverUrl),body:details+para(c.description)+para('Nhóm dịch: '+c.house.name)+link(housePath(c.house.slug),c.house.name)+list(c.tags.map(t=>link('/the-loai/'+encodeURIComponent(t.slug),t.name)))+'<h2>Danh sách chương</h2>'+list(chapters.map(ch=>link(chapterLink(ch,c),chapterLabel(ch))))};
   }
   if (parts[0] === 'doc') {
-    if (parts.length!==2 || !UUID.test(parts[1]??'')) return missing();
-    const ch=await api<ChapterSummary>('/api/chapters/'+parts[1]);
+    const friendly=chapterRoute(path);
+    if (!friendly && (parts.length!==2 || !UUID.test(parts[1]??''))) return missing();
+    const ch=await api<ChapterSummary>(friendly ? '/api/chapters/by-slug/'+encodeURIComponent(friendly.house)+'/'+encodeURIComponent(friendly.slug)+'/'+encodeURIComponent(friendly.number) : '/api/chapters/'+parts[1]);
+    const canonical=chapterSummaryLink(ch);
+    if (url.pathname !== canonical) return {redirect:canonical+url.search};
+    const comic = {id:ch.comicId,slug:ch.comicSlug,publicPath:ch.publicPath ? '/truyen/'+ch.publicPath.split('/').slice(2,4).join('/') : undefined};
     const title=ch.comicTitle+' – '+chapterLabel(ch);
-    return {title,description:clean('Thông tin '+title+' tại Rồng Nhỏ.'),path:chapterPath(ch.id),mature:ch.isMature,noindex:ch.isMature,body:para('Nhóm dịch: '+ch.house.name)+link(comicPath({id:ch.comicId,slug:ch.comicSlug}),ch.comicTitle)+list([...(ch.prev?[link(chapterPath(ch.prev.id),chapterLabel(ch.prev))]:[]),...(ch.next?[link(chapterPath(ch.next.id),chapterLabel(ch.next))]:[])])};
+    return {title,description:clean('Thông tin '+title+' tại Rồng Nhỏ.'),path:canonical,breadcrumbs:[{name:'Danh sách truyện',path:'/truyen'},{name:ch.comicTitle,path:comicPath(comic)},{name:chapterLabel(ch),path:canonical}],mature:ch.isMature,noindex:ch.isMature,body:para('Nhóm dịch: '+ch.house.name)+link(comicPath(comic),ch.comicTitle)+list([...(ch.prev?[link(chapterLink(ch.prev,comic),chapterLabel(ch.prev))]:[]),...(ch.next?[link(chapterLink(ch.next,comic),chapterLabel(ch.next))]:[])])};
   }
   if (path==='/nhom-dich') {
     const houses=await api<PublicHouse[]>('/api/houses');
@@ -126,6 +132,7 @@ export function renderHtml(shell: string, meta: Meta): string {
     '<meta name="twitter:title" content="'+escapeHtml(title)+'">',
     '<meta name="twitter:description" content="'+escapeHtml(description)+'">',
     '<meta name="twitter:image" content="'+escapeHtml(meta.image||DEFAULT_IMAGE)+'">',
+    ...(meta.breadcrumbs && !meta.noindex ? ['<script type="application/ld+json">'+JSON.stringify({'@context':'https://schema.org','@type':'BreadcrumbList',itemListElement:meta.breadcrumbs.map((b,i)=>({'@type':'ListItem',position:i+1,name:b.name,item:ORIGIN+b.path}))}).replace(/</g,'\\u003c')+'</script>'] : []),
   ];
   return shell.replace(/<title>[\s\S]*?<\/title>/i,'')
     .replace(/<meta\s+(?:name|property)="(?:description|robots|rating|og:(?:title|description|url|image(?::(?:type|width|height))?)|twitter:(?:title|description|image))"[^>]*>/gi,'')

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { ChevronRight, Flame, Sparkles, CheckCircle2, Users } from 'lucide-react';
-import { paths } from '@/app/paths';
+import { paths, comicLink } from '@/app/paths';
 import { EmptyState, ErrorState, Pagination, Select, Skeleton, Tabs, ButtonLink } from '@/components/ui';
 import { publicApi } from '@/services/api';
 import { useDocumentTitle } from '@/hooks/useTheme';
@@ -103,7 +103,7 @@ export function HomePage() {
               {ranking.data?.length === 0 && <li className="p-4 text-sm text-muted">Chưa có dữ liệu lượt xem.</li>}
               {ranking.data?.map((c, i) => (
                 <li key={c.id}>
-                  <Link to={paths.comic(c.id, c.slug)} className="flex items-center gap-3 p-3 hover:bg-surface-2">
+                  <Link to={comicLink(c)} className="flex items-center gap-3 p-3 hover:bg-surface-2">
                     <span className={`w-6 text-center text-lg font-bold ${i < 3 ? 'text-accent' : 'text-muted'}`}>{i + 1}</span>
                     <Cover url={c.coverUrl} title={c.translatedTitle} className="w-10 shrink-0 rounded-lg" />
                     <span className="line-clamp-2 text-sm font-medium">{c.translatedTitle}</span>

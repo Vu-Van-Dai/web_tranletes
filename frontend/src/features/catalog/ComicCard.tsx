@@ -1,6 +1,6 @@
 import { Link } from 'react-router';
 import { ImageOff } from 'lucide-react';
-import { paths } from '@/app/paths';
+import { comicLink, chapterLink } from '@/app/paths';
 import { Badge, Skeleton } from '@/components/ui';
 import { comicStatusLabel } from '@/text/vi';
 import type { ComicCard as Card } from '@/types/api';
@@ -24,7 +24,7 @@ export function Cover({ url, title, className }: { url: string | null; title: st
 export function ComicCard({ comic }: { comic: Card }) {
   return (
     <article className="group @container flex flex-col gap-2" data-testid="comic-card">
-      <Link to={paths.comic(comic.id, comic.slug)} className="relative block" aria-label={comic.translatedTitle}>
+      <Link to={comicLink(comic)} className="relative block" aria-label={comic.translatedTitle}>
         <Cover url={comic.coverUrl} title={comic.translatedTitle} />
         <div className="absolute left-2 top-2 flex gap-1">
           {isRecent(comic.lastChapterPublishedAt) && (
@@ -34,14 +34,14 @@ export function ComicCard({ comic }: { comic: Card }) {
         </div>
       </Link>
       <div className="min-w-0">
-        <Link to={paths.comic(comic.id, comic.slug)} className="line-clamp-2 text-sm font-semibold leading-snug hover:text-accent">
+        <Link to={comicLink(comic)} className="line-clamp-2 text-sm font-semibold leading-snug hover:text-accent">
           {comic.translatedTitle}
         </Link>
         <ul className="mt-1.5 space-y-1">
           {comic.latestChapters.map((ch) => (
             <li key={ch.id} className="flex items-center justify-between gap-2 text-xs">
               {/* The chapter number never truncates; on narrow cards the timestamp gives way instead. */}
-              <Link to={paths.read(ch.id)} className="shrink-0 whitespace-nowrap rounded-md bg-surface-2 px-2 py-0.5 hover:bg-accent-soft hover:text-accent">
+              <Link to={chapterLink(ch, comic)} className="shrink-0 whitespace-nowrap rounded-md bg-surface-2 px-2 py-0.5 hover:bg-accent-soft hover:text-accent">
                 {chapterLabel(ch.number)}
               </Link>
               <span className="hidden min-w-0 truncate text-muted @[10.5rem]:inline">{timeAgo(ch.publishedAt)}</span>

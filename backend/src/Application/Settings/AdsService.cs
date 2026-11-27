@@ -35,17 +35,31 @@ public sealed record AdUnitDto(
     int? CountdownSeconds,
     int? DelaySeconds,
     int? FrequencyMinutes,
-    string? Trigger = null);
+    string? Trigger = null,
+    string? Provider = null,
+    bool ScriptApproved = false);
 
-public sealed record AdsConfigDto(bool Enabled, IReadOnlyList<AdUnitDto> Units)
+public sealed record AdProviderReport(string Provider, string Month, string Currency, long Impressions, decimal Revenue);
+
+public sealed record AdsConfigDto(bool Enabled, IReadOnlyList<AdUnitDto> Units,
+    IReadOnlyDictionary<string, bool>? ProviderEnabled = null, bool AllowDirectScripts = false,
+    IReadOnlyList<AdProviderReport>? Reports = null)
 {
     public static readonly AdsConfigDto Empty = new(false, []);
+    public int SchemaVersion => 2;
 }
 
 public sealed partial class AdsService(IAppDbContext db, IMediaService media, IPublicUrls urls, StorageOutbox outbox, IAuditLogger audit, ICurrentUser currentUser, TimeProvider clock)
 {
     public const int MaxUnits = 50;
     public const int MaxHtmlLength = 20_000;
+    public static readonly IReadOnlySet<string> Providers = new HashSet<string>(StringComparer.Ordinal)
+        { "direct", "custom", "adsense", "adsterra", "hilltopads", "clickadu", "monetag", "exoclick", "other" };
+
+    private static string ProviderOf(AdUnitDto unit) => unit.Provider ?? (unit.Format == "script" || unit.Html is not null ? "custom" : "direct");
+    public static bool IsUnitAllowed(AdsConfigDto config, AdUnitDto unit) => config.Enabled && unit.Enabled &&
+        !(config.ProviderEnabled?.TryGetValue(ProviderOf(unit), out var enabled) == true && !enabled) &&
+        ProviderOf(unit) != "adsense" && (unit.Format != "script" || config.AllowDirectScripts && unit.ScriptApproved);
 
     public static readonly IReadOnlySet<string> Formats = new HashSet<string>(StringComparer.Ordinal) { "banner", "popup", "newtab", "script" };
 
@@ -69,7 +83,7 @@ public sealed partial class AdsService(IAppDbContext db, IMediaService media, IP
     public async Task<AdsConfigDto> GetPublicAsync(CancellationToken ct)
     {
         var config = await GetAsync(ct);
-        return config.Enabled ? config with { Units = config.Units.Where(u => u.Enabled).ToList() } : AdsConfigDto.Empty;
+        return config.Enabled ? config with { Units = config.Units.Where(u => IsUnitAllowed(config, u)).ToList(), Reports = null } : AdsConfigDto.Empty;
     }
 
     public async Task<AdsConfigDto> UpdateAsync(AdsConfigDto request, CancellationToken ct)
@@ -140,6 +154,20 @@ public sealed partial class AdsService(IAppDbContext db, IMediaService media, IP
         v.Must(units.Count <= MaxUnits, "units", $"Tối đa {MaxUnits} quảng cáo.");
         v.ThrowIfInvalid();
 
+        var providerEnabled = request.ProviderEnabled ?? new Dictionary<string, bool>();
+        v.Must(providerEnabled.Count <= Providers.Count && providerEnabled.Keys.All(Providers.Contains), "providerEnabled", "Nhà cung cấp không hợp lệ.");
+        var reports = request.Reports ?? [];
+        v.Must(reports.Count <= 360, "reports", "Tối đa 360 báo cáo.");
+        v.ThrowIfInvalid();
+        var reportKeys = new HashSet<(string, string, string)>();
+        foreach (var report in reports)
+        {
+            v.Must(report is not null && report.Provider is not null && Providers.Contains(report.Provider) &&
+                report.Month is not null && Regex.IsMatch(report.Month, @"^\d{4}-(0[1-9]|1[0-2])$") &&
+                report.Currency is not null && Regex.IsMatch(report.Currency, "^[A-Z]{3}$") &&
+                report.Impressions is >= 0 and <= 1_000_000_000_000 && report.Revenue is >= 0 and <= 1_000_000_000_000m &&
+                reportKeys.Add((report.Provider, report.Month, report.Currency)), "reports", "Báo cáo không hợp lệ hoặc trùng nhà cung cấp/tháng/tiền tệ.");
+        }
         var result = new List<AdUnitDto>(units.Count);
         var ids = new HashSet<string>(StringComparer.Ordinal);
         for (var i = 0; i < units.Count; i++)
@@ -147,6 +175,8 @@ public sealed partial class AdsService(IAppDbContext db, IMediaService media, IP
             var u = units[i];
             var f = $"units[{i}]";
             var format = u.Format?.Trim().ToLowerInvariant() ?? "";
+            var provider = ProviderOf(u);
+            v.Must(Providers.Contains(provider) && provider != "adsense", f + ".provider", "Nhà cung cấp không hợp lệ (AdSense Auto Ads cấu hình riêng).");
             v.Must(u.Id is not null && IdRegex().IsMatch(u.Id) && ids.Add(u.Id), f + ".id", "Mã quảng cáo không hợp lệ hoặc bị trùng.");
             v.Required(f + ".name", u.Name, "Tên quảng cáo").Length(f + ".name", u.Name, "Tên quảng cáo", 1, 100);
             v.Must(Formats.Contains(format), f + ".format", "Loại quảng cáo không hợp lệ.");
@@ -201,11 +231,12 @@ public sealed partial class AdsService(IAppDbContext db, IMediaService media, IP
                 format == "popup" && u.CloseMode == "countdown" ? u.CountdownSeconds : null,
                 u.DelaySeconds,
                 u.FrequencyMinutes,
-                format == "newtab" ? u.Trigger ?? "any" : null));
+                format == "newtab" ? u.Trigger ?? "any" : null,
+                provider, format == "script" && u.ScriptApproved));
         }
 
         v.ThrowIfInvalid();
-        return new AdsConfigDto(request.Enabled, result);
+        return new AdsConfigDto(request.Enabled, result, providerEnabled, request.AllowDirectScripts, reports);
     }
 
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
