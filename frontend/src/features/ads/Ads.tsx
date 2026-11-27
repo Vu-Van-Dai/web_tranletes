@@ -7,7 +7,7 @@ import type { AdPage, AdSlot as AdSlotName, AdUnit } from '@/types/api';
 import { isAllowedAdUnit, isDirectBanner, requiresDirectScript } from './providers';
 import { hasVisibleCreative, loadedDirectBanners, mountDirectBanner } from './directCreative';
 import { useAuth } from '@/features/auth/AuthProvider';
-import { dimensions, fitsSlot, weightedPick, standaloneLink, noteAd, imageFallback } from './placement';
+import { dimensions, fitsSlot, weightedPick, standaloneLink, noteAd, imageFallback, adKind, singleNetworkScript, adsterraScriptPosition } from './placement';
 import { comicRoute, chapterRoute } from '@/app/paths';
 import { cn } from '@/utils/format';
 
@@ -247,6 +247,26 @@ declare global {
 function injectScriptUnit(unit: AdUnit):boolean {
   if (!unit.scriptApproved || (window.__rnAdPath && window.__rnAdPath !== window.location.pathname)) return false;
   if (!unit.html || document.querySelector(`[data-rn-ad="${CSS.escape(unit.id)}"]`)) return false;
+  // Adsterra supplies Popunder for the end of HEAD, Social Bar for the end of BODY.
+  // React loads these dynamically after eligibility/approval, not during HTML parsing.
+  const kind=adKind(unit);
+  if(kind==='popunder'||kind==='socialbar'){
+    const original=singleNetworkScript(unit.html);
+    const position=adsterraScriptPosition(unit);
+    if(!original||!position){noteAd(unit.id,'network','invalid-tag');return false;}
+    const script=document.createElement('script');
+    for(const attr of original.attributes)script.setAttribute(attr.name,attr.value);
+    script.async=original.hasAttribute('async');
+    script.dataset.rnAd=unit.id;
+    script.dataset.rnAdContent=unit.html;
+    script.addEventListener('load',()=>noteAd(unit.id,'network','injected'),{once:true});
+    script.addEventListener('error',()=>noteAd(unit.id,'network','script-error'),{once:true});
+    window.__rnAdScripts=true;
+    window.__rnAdPath=window.location.pathname;
+    noteAd(unit.id,'network','loading');
+    (position==='head'?document.head:document.body).appendChild(script);
+    return true;
+  }
   const host = document.createElement('div');
   host.dataset.rnAd = unit.id;
   host.dataset.rnAdContent = unit.html;

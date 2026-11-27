@@ -146,3 +146,29 @@ describe('network ad compatibility',()=>{
     expect(imageFallback([ad,own],ad.id,0)?.id).toBe('own');
   });
 });
+
+import { singleNetworkScript, adsterraScriptPosition } from '@/features/ads/placement';
+describe('Adsterra publisher tag placement',()=>{
+  const tag=(src:string)=>'<script data-cfasync="false" src="'+src+'"></script>';
+  const script={id:'example',name:'Network',provider:'adsterra',format:'script',enabled:true} as AdUnit;
+  it('routes the supplied tag families to their documented positions without executing them',()=>{
+    const pop={...script,html:tag('https://abscloud.org/1/'+'a'.repeat(32))};
+    const social={...script,html:tag('https://bauval.org/14/'+'b'.repeat(32))};
+    expect(adsterraScriptPosition(pop)).toBe('head');
+    expect(adsterraScriptPosition(social)).toBe('body');
+    expect(adKind(pop)).toBe('popunder');
+    expect(adKind(social)).toBe('socialbar');
+    expect(singleNetworkScript(pop.html)?.getAttribute('data-cfasync')).toBe('false');
+    expect(adsterraScriptPosition({...pop,provider:'custom'})).toBeNull();
+    expect(adsterraScriptPosition({...pop,html:pop.html+'<div></div>'})).toBeNull();
+    expect(singleNetworkScript('<script>alert(1)</script>')).toBeNull();
+    expect(singleNetworkScript(tag('http://example.com/ad.js'))).toBeNull();
+  });
+  it('classifies all six fixed banner shapes as sync, regardless of key or size',()=>{
+    for(const [width,height] of [[468,60],[300,250],[160,600],[160,300],[320,50],[728,90]]){
+      const html='<script>atOptions={key:"example",format:"iframe",height:'+height+',width:'+width+',params:{}}</script><script data-cfasync="false" src="https://bauval.org/22/example"></script>';
+      expect(directTagKind(html)).toBe('sync');
+      expect(dimensions({...script,format:'banner',html})).toEqual({width,height});
+    }
+  });
+});

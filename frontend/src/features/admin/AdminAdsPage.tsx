@@ -8,7 +8,7 @@ import { ApiError } from '@/services/http';
 import type { AdFormat, AdPage, AdSlot, AdUnit, AdsConfig, AdProvider, AdProviderReport } from '@/types/api';
 
 import { providerLabels, providerOf } from '@/features/ads/providers';
-import { dimensions, readDiagnostics, suggestedAdsterraLayout, adKind, suggestedPopunderTest, diagnosticLabel } from '@/features/ads/placement';
+import { dimensions, readDiagnostics, suggestedAdsterraLayout, adKind, suggestedPopunderTest, diagnosticLabel, adsterraScriptPosition } from '@/features/ads/placement';
 import { directTagKind } from '@/features/ads/directCreative';
 
 const formatLabel: Record<AdFormat, string> = {
@@ -290,6 +290,7 @@ function AdEditor({ unit, providerSettings, onCancel, onSave }: { unit: AdUnit; 
             </Field>
           </div>
         )}
+        {u.format==='script'&&u.provider==='adsterra'&&adsterraScriptPosition(u)&&<p className="rounded-xl bg-surface-2 p-3 text-sm text-muted">{adsterraScriptPosition(u)==='head'?'Popunder: nạp script cuối head.':'Social Bar: nạp script cuối body.'} Mã được nạp động sau khi kiểm tra quyền và điều kiện hiển thị.</p>}
         {u.format === 'script' && (
           <Field label="Mã của mạng quảng cáo" required hint="Dán nguyên văn, kể cả thẻ <script>.">
             {(id) => <Textarea id={id} rows={6} className="font-mono text-xs" value={u.html ?? ''} onChange={(e) => set({ html: e.target.value || null, scriptApproved: false })} data-testid="ad-script" />}
