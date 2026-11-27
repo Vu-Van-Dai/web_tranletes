@@ -97,17 +97,23 @@ function recordShown(unit: AdUnit, viewKey: string) {
 // ---------------- Creatives ----------------
 
 /** A real navigated document has its own CSP, unlike srcDoc which inherits the parent CSP. */
-function HtmlCreative({ html, title, minHeight = 90 }: { html: string; title: string; minHeight?: number }) {
+function HtmlCreative({ html, title, minHeight = 90, onState }: { html: string; title: string; minHeight?: number; onState?: (visible:boolean)=>void }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const sent = useRef(false);
   const [height, setHeight] = useState(minHeight);
   const id = useId().replace(/[^a-zA-Z0-9_-]/g, '_');
+  const visible = useRef(false);
+  const timer = useRef<number | undefined>(undefined);
+  const stateCallback = useRef(onState);
+  stateCallback.current = onState;
+  useEffect(()=>()=>clearTimeout(timer.current),[]);
   useLayoutEffect(() => {
     const onMessage = (e: MessageEvent) => {
       if (e.origin !== 'null' || e.source !== frame.current?.contentWindow) return;
-      const data = e.data as { type?: string; id?: string; h?: number } | null;
+      const data = e.data as { type?: string; id?: string; h?: number; visible?: boolean } | null;
       if (data?.type === 'rn-ad-size' && data.id === id && typeof data.h === 'number' && Number.isFinite(data.h)) {
         setHeight(Math.min(Math.max(Math.ceil(data.h), 30), 1200));
+        if(data.visible===true&&!visible.current){visible.current=true;stateCallback.current?.(true);}
       }
     };
     window.addEventListener('message', onMessage);
@@ -124,6 +130,7 @@ function HtmlCreative({ html, title, minHeight = 90 }: { html: string; title: st
       onLoad={() => {
         if (sent.current || !frame.current?.contentWindow) return;
         sent.current = true;
+        timer.current=window.setTimeout(()=>stateCallback.current?.(visible.current),12000);
         // The sandbox's origin is opaque, so a literal target origin cannot be used.
         frame.current.contentWindow.postMessage({ type: 'rn-ad-init', id, html }, '*');
       }}
@@ -133,17 +140,17 @@ function HtmlCreative({ html, title, minHeight = 90 }: { html: string; title: st
   );
 }
 
-function Creative({ unit, onClick }: { unit: AdUnit; onClick?: () => void }) {
+function Creative({ unit, onClick, onState }: { unit: AdUnit; onClick?: () => void; onState?: (visible:boolean)=>void }) {
   if (unit.imageUrl && unit.targetUrl) {
     return (
       <a href={unit.targetUrl} target="_blank" rel="sponsored noopener noreferrer" onClick={onClick} className="block">
-        <img src={unit.imageUrl} alt={unit.name} className="mx-auto block h-auto max-h-[70dvh] w-auto max-w-full" loading="lazy" decoding="async" />
+        <img src={unit.imageUrl} alt={unit.name} className="mx-auto block h-auto max-h-[70dvh] w-auto max-w-full" loading="lazy" decoding="async" onLoad={()=>onState?.(true)} onError={()=>onState?.(false)} />
       </a>
     );
   }
   const link=standaloneLink(unit.html);
   if(link)return <a href={link.href} target="_blank" rel="sponsored noopener noreferrer" onClick={onClick} className="mx-auto my-2 inline-flex rounded-lg border border-line px-4 py-2 text-sm font-medium text-accent hover:underline">{link.label}</a>;
-  return unit.html ? <HtmlCreative key={unit.id+':'+unit.html} html={unit.html} title={unit.name} minHeight={dimensions(unit)?.height??90}/> : null;
+  return unit.html ? <HtmlCreative key={unit.id+':'+unit.html} html={unit.html} title={unit.name} minHeight={dimensions(unit)?.height??90} onState={onState}/> : null;
 }
 
 const AdLabel = () => <span className="text-[10px] font-medium uppercase tracking-wider text-muted">Quảng cáo</span>;
@@ -194,6 +201,13 @@ function DirectBanner({ unit, slot, className }: {unit: AdUnit; slot: AdSlotName
   );
 }
 
+function IsolatedBanner({unit,slot}:{unit:AdUnit;slot:AdSlotName}){
+  const [empty,setEmpty]=useState(false);
+  if(empty)return null;
+  return <aside className="rounded-2xl border border-line bg-surface p-2 text-center" aria-label="Quảng cáo" data-ad="" data-testid={'ad-slot-'+slot}>
+    <AdLabel/><div className="mx-auto w-full overflow-hidden" style={{maxWidth:dimensions(unit)?.width}}><Creative unit={unit} onState={visible=>{noteAd(unit.id,slot,visible?'element':'no-element');if(!visible)setEmpty(true);}}/></div>
+  </aside>;
+}
 /** One weighted choice per slot; independent slots can coexist. */
 export function AdSlot({slot,className}:{slot:AdSlotName;className?:string}){
   const units=useAdUnits();
@@ -202,17 +216,15 @@ export function AdSlot({slot,className}:{slot:AdSlotName;className?:string}){
   const [pick]=useState(()=>Math.random());
   useLayoutEffect(()=>{
     const el=host.current;if(!el)return;
-    const measure=()=>{const next={width:Math.max(0,el.clientWidth-18),viewport:window.innerWidth};setSize(old=>old.width===next.width&&old.viewport===next.viewport?old:next);};
+    const measure=()=>{const style=getComputedStyle(el);const next={width:Math.max(0,el.clientWidth-parseFloat(style.paddingLeft||'0')-parseFloat(style.paddingRight||'0')-18),viewport:window.innerWidth};setSize(old=>old.width===next.width&&old.viewport===next.viewport?old:next);};
     measure();const observer=new ResizeObserver(measure);observer.observe(el);window.addEventListener('resize',measure);
     return ()=>{observer.disconnect();window.removeEventListener('resize',measure);};
   },[]);
   const eligible=units.filter(u=>fitsSlot(u,slot,size.width,size.viewport));
   const unit=weightedPick(eligible,pick);
-  return <div ref={host} className={cn('w-full min-w-0',className)} style={unit?undefined:{marginTop:0,marginBottom:0,padding:0}}>
-    {unit&&(isDirectBanner(unit)?<DirectBanner key={unit.id+':'+unit.html} unit={unit} slot={slot}/>:(
-      <aside className="rounded-2xl border border-line bg-surface p-2 text-center" aria-label="Quảng cáo" data-ad="" data-testid={'ad-slot-'+slot}>
-        <AdLabel/><div className="mx-auto w-full overflow-hidden" style={{maxWidth:dimensions(unit)?.width}}><Creative unit={unit}/></div>
-      </aside>))}
+  return <div ref={host} data-ad-slot-wrapper="" className={cn('w-full min-w-0',className)}>
+    {unit&&(isDirectBanner(unit)?<DirectBanner key={unit.id+':'+unit.html} unit={unit} slot={slot}/>: (
+      <IsolatedBanner key={unit.id+':'+unit.html} unit={unit} slot={slot}/>))}
   </div>;
 }
 
