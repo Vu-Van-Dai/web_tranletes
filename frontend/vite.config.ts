@@ -15,11 +15,8 @@ const proxy = {
 const ADSENSE_START = '<!-- adsense:start -->';
 const ADSENSE_END = '<!-- adsense:end -->';
 
-/**
- * Google AdSense: the tag must sit literally in <head> of the served HTML (Google verifies the site from it), so it is
- * injected into dist/index.html at build time. dist/workspace.html is the same page WITHOUT it and is served for the
- * ad-free house workspace and admin console (functions/quan-tri, functions/quan-ly-nhom). PUBLIC_ADSENSE_CLIENT="" disables it (E2E builds).
- */
+/** AdSense ownership is verified with a meta tag, without loading ad scripts during build.
+ * Auto ads are opt-in and runtime gated by public site configuration. The workspace remains ad-free. */
 function adsense(client: string): Plugin {
   let outDir = 'dist';
   return {
@@ -30,7 +27,7 @@ function adsense(client: string): Plugin {
     },
     transformIndexHtml(html) {
       if (!client) return html;
-      const tag = `<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${client}" crossorigin="anonymous"></script>`;
+      const tag = `<meta name="google-adsense-account" content="${client}">`;
       return html.replace('</head>', `    ${ADSENSE_START}\n    ${tag}\n    ${ADSENSE_END}\n  </head>`);
     },
     closeBundle() {
@@ -47,8 +44,8 @@ const adsenseClient = (mode: string) => loadEnv(mode, '..', 'PUBLIC_').PUBLIC_AD
 
 export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss(), adsense(adsenseClient(mode))],
-  // Lets the SPA load AdSense when arriving on a public page from the ad-free shell (empty in dev: no ads on localhost).
-  define: { __ADSENSE_CLIENT__: JSON.stringify(mode === 'production' ? adsenseClient(mode) : '') },
+  // Auto ads are disabled by default. Ownership verification does not require loading ad code.
+  define: { __ADSENSE_CLIENT__: JSON.stringify(mode === 'production' && (loadEnv(mode, '..', 'PUBLIC_').PUBLIC_ADSENSE_AUTO_ADS ?? process.env.PUBLIC_ADSENSE_AUTO_ADS) === 'true' ? adsenseClient(mode) : '') },
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   // One root .env for backend + frontend; only PUBLIC_* / VITE_* values reach the browser bundle.
   envDir: '..',

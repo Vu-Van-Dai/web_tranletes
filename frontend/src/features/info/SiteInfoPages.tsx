@@ -1,32 +1,10 @@
-import { useEffect, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { paths } from '@/app/paths';
 import { useDocumentTitle } from '@/hooks/useTheme';
 
 const EMAIL = 'rongnhotranlation@gmail.com';
 const UPDATED = '02/11/2026';
-
-/**
- * Keep public information pages readable and consistent with the main site.
- * This client-side metadata is useful for navigation; the rest of the SPA
- * still needs server-rendered metadata for reliable crawler indexing.
- */
-function useInfoMeta(description: string, route: string) {
-  useEffect(() => {
-    const descriptionTag = document.querySelector<HTMLMetaElement>('meta[name="description"]');
-    const canonicalTag = document.querySelector<HTMLLinkElement>('link[rel="canonical"]');
-    const originalDescription = descriptionTag?.content;
-    const originalCanonical = canonicalTag?.href;
-
-    if (descriptionTag) descriptionTag.content = description;
-    if (canonicalTag) canonicalTag.href = 'https://rongnho.shop' + route;
-
-    return () => {
-      if (descriptionTag && originalDescription !== undefined) descriptionTag.content = originalDescription;
-      if (canonicalTag && originalCanonical !== undefined) canonicalTag.href = originalCanonical;
-    };
-  }, [description, route]);
-}
 
 function InfoPage({ title, intro, route, description, children }: {
   title: string;
@@ -35,8 +13,7 @@ function InfoPage({ title, intro, route, description, children }: {
   description: string;
   children: ReactNode;
 }) {
-  useDocumentTitle(title);
-  useInfoMeta(description, route);
+  useDocumentTitle(title, { description, canonical: route });
 
   return (
     <article className="container-page mx-auto max-w-4xl py-8 sm:py-12">

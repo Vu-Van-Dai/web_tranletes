@@ -8,13 +8,13 @@ import { cn } from '@/utils/format';
 
 /*
  * Advertising runtime. Ads are configured by the SystemAdmin (/quan-tri/quang-cao) and delivered with /api/site.
- * They render on every public page and in the reader — for every visitor, signed in or not, house members included.
+ * Eligible public catalog and non-mature reader pages may render ads for visitors, including signed-in users.
  * The house workspace (/quan-ly-nhom) and the admin console (/quan-tri) are ad-free: nothing here is mounted
  * there, and a full reload is forced when entering them after network scripts were injected (see useAdFreeZone).
  */
 
 // '/workspace' is where an earlier deployment's redirect sent visitors (still cached by some browsers).
-const AD_FREE_PREFIXES = ['/quan-ly-nhom', '/quan-tri', '/workspace'];
+const AD_FREE_PREFIXES = ['/quan-ly-nhom', '/quan-tri', '/workspace', '/dang-nhap', '/dang-ky', '/doi-mat-khau', '/tu-truyen', '/gioi-thieu', '/lien-he', '/chinh-sach-bao-mat', '/dieu-khoan-su-dung', '/faq', '/tim-kiem'];
 
 export const isAdFreePath = (pathname: string) => AD_FREE_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
@@ -34,9 +34,23 @@ export const AD_TRIGGER_SELECTOR = 'a[href^="/truyen/"], a[href^="/doc/"], [data
 
 const targets = (unit: AdUnit, group: AdPage) => !unit.pages || unit.pages.length === 0 || unit.pages.includes(group);
 
+function useAdEligibility() {
+  const { pathname } = useLocation();
+  const group = pageGroupOf(pathname);
+  const id = pathname.split('/')[2] ?? '';
+  const comic = useQuery({ queryKey: ['comic', id], queryFn: () => publicApi.comic(id), enabled: group === 'comic' && !!id });
+  const chapter = useQuery({ queryKey: ['ad-chapter', id], queryFn: () => publicApi.chapter(id), enabled: group === 'reader' && !!id, staleTime: 30_000 });
+  // Fail closed while age classification is loading or cannot be retrieved.
+  const allowed = !isAdFreePath(pathname) && group !== 'other' &&
+    (group !== 'comic' || (comic.isSuccess && comic.data.isMature === false)) &&
+    (group !== 'reader' || (chapter.isSuccess && chapter.data.isMature === false));
+  const site = useQuery({ queryKey: ['site'], queryFn: publicApi.site, staleTime: 60_000, refetchInterval: 60_000 });
+  return { enabled: allowed && site.data?.ads?.enabled === true, group, site };
+}
 function useAdUnits(): AdUnit[] {
-  const site = useQuery({ queryKey: ['site'], queryFn: publicApi.site, staleTime: 60_000 });
-  return useMemo(() => (site.data?.ads?.enabled ? site.data.ads.units.filter((u) => u.enabled) : []), [site.data]);
+  const { enabled, group, site } = useAdEligibility();
+  // Do not mix third-party placements with AdSense auto ads in the same deployment.
+  return useMemo(() => (enabled && !adsenseClient ? (site.data?.ads?.units ?? []).filter(u => u.enabled && targets(u, group)) : []), [enabled, group, site.data]);
 }
 
 // ---------------- Frequency capping (per browser; storage may be unavailable) ----------------
@@ -137,6 +151,7 @@ export function AdSlot({ slot, className }: { slot: AdSlotName; className?: stri
 declare global {
   interface Window {
     __rnAdScripts?: boolean;
+    __rnAdPath?: string;
   }
 }
 
@@ -160,6 +175,7 @@ function injectScriptUnit(unit: AdUnit) {
   }
   document.body.appendChild(host);
   window.__rnAdScripts = true;
+  window.__rnAdPath = window.location.pathname;
 }
 
 /**
@@ -170,13 +186,25 @@ export function AdsRuntime() {
   const units = useAdUnits();
   const { pathname } = useLocation();
   const group = pageGroupOf(pathname);
-  const [popup, setPopup] = useState<AdUnit | null>(null);
+  const { enabled } = useAdEligibility();
+  const [popup, setPopup] = useState<{ unit: AdUnit; path: string } | null>(null);
+  const adsenseAllowed = enabled && group === 'comic' && !!adsenseClient;
 
   // Network scripts: once per page load.
   useEffect(() => {
-    if (isAdFreePath(pathname)) return;
+    // Scripts can register listeners that removing their tag cannot undo. Reset the document when
+    // leaving the route where they ran, or when the provider/global switch is turned off.
+    const injected = Array.from(document.querySelectorAll<HTMLElement>('[data-rn-ad]'));
+    const hasAdsense = !!document.querySelector(`script[src^="${ADSENSE_SRC}"]`);
+    if ((window.__rnAdPath && window.__rnAdPath !== pathname) ||
+        (window.__rnAdScripts && (!enabled || injected.some(el => !units.some(u => u.id === el.dataset.rnAd && u.format === 'script')))) ||
+        (hasAdsense && !adsenseAllowed)) {
+      window.location.reload();
+      return;
+    }
+    if (!enabled) return;
     units.filter((u) => u.format === 'script' && targets(u, group)).forEach(injectScriptUnit);
-  }, [units, group, pathname]);
+  }, [units, group, pathname, enabled, adsenseAllowed]);
 
   // Pop-up: first eligible unit for this page, after its delay.
   useEffect(() => {
@@ -185,15 +213,15 @@ export function AdsRuntime() {
     if (!unit) return;
     const id = setTimeout(() => {
       recordShown(unit, pathname);
-      setPopup(unit);
+      setPopup({ unit, path: pathname });
     }, Math.max(0, unit.delaySeconds ?? 0) * 1000);
     return () => clearTimeout(id);
   }, [units, group, pathname]);
 
-  // Google AdSense on public pages: present in index.html; loaded here after arriving from an ad-free shell.
+  // Only explicitly enabled Auto ads on classified, non-mature comic pages.
   useEffect(() => {
-    if (!isAdFreePath(pathname)) ensureAdsense();
-  }, [pathname]);
+    if (adsenseAllowed && (!window.__rnAdPath || window.__rnAdPath === pathname)) ensureAdsense();
+  }, [adsenseAllowed, pathname]);
 
   // New-tab ads. The clicked link or button keeps working normally in this tab; the ad opens in a separate tab
   // the reader can close. Trigger "any": the next click anywhere. Trigger "content": clicks on a story, a chapter
@@ -219,7 +247,7 @@ export function AdsRuntime() {
     return () => document.removeEventListener('click', onClick, true);
   }, [units, group, pathname]);
 
-  return popup ? <AdPopup unit={popup} onClose={() => setPopup(null)} /> : null;
+  return popup && popup.path === pathname && units.some(u => u.id === popup.unit.id) ? <AdPopup unit={popup.unit} onClose={() => setPopup(null)} /> : null;
 }
 
 /** Overlay panel; with closeMode "countdown" the close button only appears after the ad was visible long enough. */
@@ -275,6 +303,7 @@ function ensureAdsense() {
   script.crossOrigin = 'anonymous';
   script.src = `${ADSENSE_SRC}?client=${adsenseClient}`;
   document.head.appendChild(script);
+  window.__rnAdPath = window.location.pathname;
 }
 
 /** Whether this page load started in an ad-free area (then it was served the ad-free shell; never reload). */
