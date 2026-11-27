@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, Navigate, useLocation, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, Bookmark, BookmarkCheck, PlayCircle, Search } from 'lucide-react';
-import { paths } from '@/app/paths';
+import { paths, comicRoute, comicLink, chapterLink } from '@/app/paths';
 import { Badge, Button, ButtonLink, EmptyState, ErrorState, Input, Skeleton, useToast } from '@/components/ui';
 import { AdSlot } from '@/features/ads/Ads';
 import { useAuth } from '@/features/auth/AuthProvider';
@@ -13,18 +13,21 @@ import { chapterLabel, cn, formatDate, isRecent, timeAgo } from '@/utils/format'
 import { Cover } from './ComicCard';
 
 export function ComicDetailPage() {
-  const { id = '' } = useParams();
+  const { id: routeId = '', slug } = useParams();
+  const location = useLocation();
+  const friendly = comicRoute(routeId, slug);
   const { status } = useAuth();
   const toast = useToast();
   const queryClient = useQueryClient();
-  const comic = useQuery({ queryKey: ['comic', id], queryFn: () => publicApi.comic(id) });
-  const chapters = useQuery({ queryKey: ['chapters', id], queryFn: () => publicApi.chapters(id) });
-  const state = useQuery({ queryKey: ['library-state', id], queryFn: () => libraryApi.state(id), enabled: status === 'authenticated' });
+  const comic = useQuery({ queryKey: friendly ? ['comic-slug', friendly.house, friendly.slug] : ['comic', routeId], queryFn: () => friendly ? publicApi.comicBySlug(friendly.house, friendly.slug) : publicApi.comic(routeId) });
+  const id = comic.data?.id ?? (friendly ? '' : routeId);
+  const chapters = useQuery({ queryKey: ['chapters', id], queryFn: () => publicApi.chapters(id), enabled: !!id });
+  const state = useQuery({ queryKey: ['library-state', id], queryFn: () => libraryApi.state(id), enabled: !!id && status === 'authenticated' });
   const [filter, setFilter] = useState('');
   const [expanded, setExpanded] = useState(false);
   useDocumentTitle(comic.data?.translatedTitle, {
     description: comic.data?.description,
-    canonical: comic.data ? paths.comic(comic.data.id, comic.data.slug) : undefined,
+    canonical: comic.data ? comicLink(comic.data) : undefined,
     image: comic.data?.coverUrl,
     mature: comic.data?.isMature,
     noindex: comic.isError,
@@ -48,6 +51,7 @@ export function ComicDetailPage() {
 
   if (comic.isError) return <div className="container-page py-10"><ErrorState error={comic.error} onRetry={() => comic.refetch()} title="Không tìm thấy truyện" /></div>;
   const c = comic.data;
+  if (c?.publicPath && location.pathname !== c.publicPath) return <Navigate replace to={c.publicPath + location.search + location.hash} />;
 
   return (
     <div className="container-page py-6">
@@ -78,14 +82,14 @@ export function ComicDetailPage() {
               </dl>
               <div className="mt-5 flex flex-wrap gap-2">
                 {state.data?.lastRead ? (
-                  <ButtonLink to={paths.read(state.data.lastRead.id)} icon={<PlayCircle className="h-4 w-4" />}>
+                  <ButtonLink to={chapterLink(state.data.lastRead, c)} icon={<PlayCircle className="h-4 w-4" />}>
                     Đọc tiếp {chapterLabel(state.data.lastRead.number)}
                   </ButtonLink>
                 ) : (
-                  c.firstChapter && <ButtonLink to={paths.read(c.firstChapter.id)} icon={<BookOpen className="h-4 w-4" />} data-testid="read-first">Đọc từ đầu</ButtonLink>
+                  c.firstChapter && <ButtonLink to={chapterLink(c.firstChapter, c)} icon={<BookOpen className="h-4 w-4" />} data-testid="read-first">Đọc từ đầu</ButtonLink>
                 )}
                 {c.latestChapter && c.latestChapter.id !== c.firstChapter?.id && (
-                  <ButtonLink to={paths.read(c.latestChapter.id)} variant="outline">Chương mới nhất</ButtonLink>
+                  <ButtonLink to={chapterLink(c.latestChapter, c)} variant="outline">Chương mới nhất</ButtonLink>
                 )}
                 {status === 'authenticated' ? (
                   <Button variant="outline" data-ad-trigger loading={follow.isPending} onClick={() => follow.mutate(!!state.data?.following)}
@@ -93,7 +97,7 @@ export function ComicDetailPage() {
                     {state.data?.following ? 'Đang theo dõi' : 'Theo dõi'}
                   </Button>
                 ) : (
-                  <ButtonLink to={`${paths.login}?next=${encodeURIComponent(paths.comic(id))}`} variant="ghost" icon={<Bookmark className="h-4 w-4" />}>Đăng nhập để theo dõi</ButtonLink>
+                  <ButtonLink to={`${paths.login}?next=${encodeURIComponent(comicLink(c))}`} variant="ghost" icon={<Bookmark className="h-4 w-4" />}>Đăng nhập để theo dõi</ButtonLink>
                 )}
               </div>
               {c.description && (
@@ -131,7 +135,7 @@ export function ComicDetailPage() {
             {visibleChapters.map((ch, i, all) => (
               // Two columns from sm up: the last row gets no bottom rule (one or two items depending on parity).
               <li key={ch.id} className={cn('border-line sm:border-b', i >= all.length - (all.length % 2 === 0 ? 2 : 1) && 'sm:border-b-0')}>
-                <Link to={paths.read(ch.id)} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-surface-2">
+                <Link to={chapterLink(ch, c)} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-surface-2">
                   <span className="min-w-0 truncate text-sm font-medium">
                     {chapterLabel(ch.number, ch.title)}
                     {state.data?.lastRead?.id === ch.id && <Badge tone="accent" className="ml-2">Đang đọc</Badge>}

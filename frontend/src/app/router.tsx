@@ -56,6 +56,7 @@ export const router = createBrowserRouter([
   {
     errorElement: <RouteError />,
     children: [
+      { path: '/doc/:houseSlug/:comicSlug/:chapterNumber', element: lazyNamed(reader, 'ReaderPage') },
       { path: '/doc/:chapterId', element: lazyNamed(reader, 'ReaderPage') },
       { path: '/workspace', element: <RequireAuth><WorkspaceRedirect /></RequireAuth> },
       {

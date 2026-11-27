@@ -70,6 +70,7 @@ export interface ChapterRef {
 }
 
 export interface ComicCard {
+  publicPath?: string;
   id: string;
   slug: string;
   translatedTitle: string;
@@ -84,6 +85,7 @@ export interface ComicCard {
 }
 
 export interface ComicDetail {
+  publicPath?: string;
   id: string;
   slug: string;
   translatedTitle: string;
@@ -112,6 +114,7 @@ export interface PublicChapter {
 }
 
 export interface ChapterSummary {
+  publicPath?: string;
   id: string;
   comicId: string;
   comicTitle: string;

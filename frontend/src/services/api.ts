@@ -74,6 +74,8 @@ export interface ComicQuery {
 export const publicApi = {
   site: () => request<SiteInfo>('/api/site'),
   comics: (query: ComicQuery, signal?: AbortSignal) => request<Paged<ComicCard>>(`/api/comics${qs({ ...query })}`, { signal }),
+  comicBySlug: (house: string, slug: string) => request<ComicDetail>(`/api/comics/by-slug/${encodeURIComponent(house)}/${encodeURIComponent(slug)}`),
+  chapterBySlug: (house: string, slug: string, number: string) => request<ChapterSummary>(`/api/chapters/by-slug/${encodeURIComponent(house)}/${encodeURIComponent(slug)}/${encodeURIComponent(number)}`),
   comic: (id: string) => request<ComicDetail>(`/api/comics/${id}`),
   chapters: (comicId: string) => request<PublicChapter[]>(`/api/comics/${comicId}/chapters`),
   chapter: (id: string) => request<ChapterSummary>(`/api/chapters/${id}`),

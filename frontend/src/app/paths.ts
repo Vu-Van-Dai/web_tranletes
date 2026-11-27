@@ -1,4 +1,23 @@
-/** All client routes (Vietnamese, ASCII). */
+/** All client routes (Vietnamese, ASCII). New links are advertised by the backend
+ * only after the additive slug API is deployed. Old API responses remain usable. */
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function comicRoute(id: string, slug?: string) {
+  return slug && !uuid.test(id) ? { house: id, slug } : null;
+}
+export function chapterRoute(pathname: string) {
+  const m = /^\/doc\/([^/]+)\/([^/]+)\/chuong-(\d+(?:\.\d{1,2})?)\/?$/.exec(pathname);
+  if (!m) return null;
+  try { return { house: decodeURIComponent(m[1]!), slug: decodeURIComponent(m[2]!), number: m[3]! }; } catch { return null; }
+}
+export function comicLink(c: { id: string; slug: string; publicPath?: string }) {
+  return c.publicPath || paths.comic(c.id, c.slug);
+}
+export function chapterLink(c: { id: string; number: number }, comic?: { publicPath?: string }) {
+  return comic?.publicPath ? '/doc/' + comic.publicPath.slice('/truyen/'.length) + '/chuong-' + c.number : paths.read(c.id);
+}
+export function chapterSummaryLink(c: { id: string; publicPath?: string }) {
+  return c.publicPath || paths.read(c.id);
+}
 export const paths = {
   home: '/',
   browse: '/truyen',

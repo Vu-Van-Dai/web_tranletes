@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ChevronLeft, ChevronRight, Columns2, Rows3, Sun, Moon, Keyboard } from 'lucide-react';
-import { paths } from '@/app/paths';
+import { paths, chapterRoute, chapterSummaryLink, chapterLink } from '@/app/paths';
 import { Button, ButtonLink, ErrorState, Modal, ProgressBar, Spinner } from '@/components/ui';
 import { libraryApi, publicApi } from '@/services/api';
 import { useAuth } from '@/features/auth/AuthProvider';
@@ -34,20 +34,24 @@ function writePref(key: string, value: string) {
 }
 
 export function ReaderPage() {
-  const { chapterId = '' } = useParams();
-  const reader = useQuery({ queryKey: ['reader', chapterId], queryFn: ({ signal }) => publicApi.reader(chapterId, signal), staleTime: 30_000, retry: 1 });
+  const { chapterId: legacyId = '' } = useParams();
+  const location = useLocation();
+  const friendly = chapterRoute(location.pathname);
+  const summary = useQuery({ queryKey: ['chapter-slug', friendly?.house, friendly?.slug, friendly?.number], queryFn: () => publicApi.chapterBySlug(friendly!.house, friendly!.slug, friendly!.number), enabled: !!friendly, staleTime: 30_000 });
+  const chapterId = friendly ? summary.data?.id ?? '' : legacyId;
+  const reader = useQuery({ queryKey: ['reader', chapterId], queryFn: ({ signal }) => publicApi.reader(chapterId, signal), enabled: !!chapterId, staleTime: 30_000, retry: 1 });
   const data = reader.data;
   useDocumentTitle(data ? `${data.chapter.comicTitle} – ${chapterLabel(data.chapter.number, data.chapter.title)}` : 'Đọc truyện', {
-    canonical: data ? paths.read(data.chapter.id) : undefined,
+    canonical: data ? chapterSummaryLink(data.chapter) : undefined,
     mature: data?.chapter.isMature,
-    noindex: reader.isError || data?.chapter.isMature,
-    pending: reader.isPending,
+    noindex: summary.isError || reader.isError || data?.chapter.isMature,
+    pending: !summary.isError && reader.isPending,
   });
 
-  if (reader.isError) {
+  if (summary.isError || reader.isError) {
     return (
       <div data-theme="dark" className="min-h-dvh bg-bg p-6 text-ink">
-        <ErrorState error={reader.error} onRetry={() => reader.refetch()} title="Không mở được chương" />
+        <ErrorState error={summary.error ?? reader.error} onRetry={() => friendly && summary.isError ? summary.refetch() : reader.refetch()} title="Không mở được chương" />
       </div>
     );
   }
@@ -60,7 +64,8 @@ export function ReaderPage() {
     );
   }
 
-  return <MatureGate data={data}>{() => <Reader key={`${chapterId}-${data.package.version}`} data={data} onStale={() => reader.refetch()} />}</MatureGate>;
+  if (data.chapter.publicPath && location.pathname !== data.chapter.publicPath) return <Navigate replace to={data.chapter.publicPath + location.search + location.hash} />;
+  return <MatureGate key={chapterId} data={data}>{() => <Reader key={`${chapterId}-${data.package.version}`} data={data} onStale={() => reader.refetch()} />}</MatureGate>;
 }
 
 function MatureGate({ data, children }: { data: ReaderData; children: () => React.ReactNode }) {
@@ -69,7 +74,7 @@ function MatureGate({ data, children }: { data: ReaderData; children: () => Reac
   if (ok) return <>{children()}</>;
   return (
     <div data-theme="dark" className="min-h-dvh bg-bg text-ink">
-      <Modal open title="Nội dung dành cho người trên 18 tuổi" onClose={() => navigate(paths.comic(data.chapter.comicId, data.chapter.comicSlug))}
+      <Modal open title="Nội dung dành cho người trên 18 tuổi" onClose={() => navigate((data.chapter.publicPath ? '/truyen/' + data.chapter.publicPath.split('/').slice(2, 4).join('/') : paths.comic(data.chapter.comicId, data.chapter.comicSlug)))}
         footer={
           <>
             <Button variant="outline" onClick={() => navigate(paths.home)}>Quay lại</Button>
@@ -193,7 +198,12 @@ function Reader({ data, onStale }: { data: ReaderData; onStale: () => void }) {
   }, [current, chapter.next, pages.length, queryClient]);
 
   // ---- Navigation ----
-  const goChapter = useCallback((id: string | undefined) => id && navigate(paths.read(id)), [navigate]);
+  const goChapter = useCallback((id: string | undefined) => {
+    if (!id) return;
+    const ref = [chapter.prev, chapter.next].find(c => c?.id === id);
+    const comicPath = chapter.publicPath ? '/truyen/' + chapter.publicPath.split('/').slice(2, 4).join('/') : undefined;
+    navigate(ref ? chapterLink(ref, { publicPath: comicPath }) : paths.read(id));
+  }, [navigate, chapter]);
   const goPage = useCallback(
     (index: number) => {
       const clamped = Math.max(0, Math.min(pages.length - 1, index));
@@ -209,7 +219,7 @@ function Reader({ data, onStale }: { data: ReaderData; onStale: () => void }) {
       if ((e.target as HTMLElement).closest('input, select, textarea')) return;
       if (e.key === ']') goChapter(chapter.next?.id);
       else if (e.key === '[') goChapter(chapter.prev?.id);
-      else if (e.key === 'Escape') navigate(paths.comic(chapter.comicId, chapter.comicSlug));
+      else if (e.key === 'Escape') navigate((chapter.publicPath ? '/truyen/' + chapter.publicPath.split('/').slice(2, 4).join('/') : paths.comic(chapter.comicId, chapter.comicSlug)));
       else if (mode === 'paged' && (e.key === 'ArrowRight' || e.key === 'd')) {
         if (current >= pages.length - 1) goChapter(chapter.next?.id);
         else goPage(current + 1);
@@ -240,11 +250,11 @@ function Reader({ data, onStale }: { data: ReaderData; onStale: () => void }) {
       {/* Top bar */}
       <header className={cn('fixed inset-x-0 top-0 z-30 border-b border-line bg-surface/95 backdrop-blur transition-transform', !barsVisible && '-translate-y-full')}>
         <div className="mx-auto flex h-14 max-w-5xl items-center gap-2 px-3">
-          <ButtonLink to={paths.comic(chapter.comicId, chapter.comicSlug)} variant="ghost" size="icon" aria-label="Về trang truyện">
+          <ButtonLink to={(chapter.publicPath ? '/truyen/' + chapter.publicPath.split('/').slice(2, 4).join('/') : paths.comic(chapter.comicId, chapter.comicSlug))} variant="ghost" size="icon" aria-label="Về trang truyện">
             <ArrowLeft className="h-5 w-5" />
           </ButtonLink>
           <div className="min-w-0 flex-1">
-            <Link to={paths.comic(chapter.comicId, chapter.comicSlug)} className="block truncate text-sm font-semibold hover:underline">
+            <Link to={(chapter.publicPath ? '/truyen/' + chapter.publicPath.split('/').slice(2, 4).join('/') : paths.comic(chapter.comicId, chapter.comicSlug))} className="block truncate text-sm font-semibold hover:underline">
               {chapter.comicTitle}
             </Link>
             <p className="truncate text-xs text-muted">{chapterLabel(chapter.number, chapter.title)} · {chapter.house.name}</p>
@@ -254,7 +264,12 @@ function Reader({ data, onStale }: { data: ReaderData; onStale: () => void }) {
             data-testid="chapter-select"
             className="hidden h-9 max-w-44 rounded-lg border border-line bg-surface px-2 text-sm sm:block"
             value={chapter.id}
-            onChange={(e) => goChapter(e.target.value)}
+            onChange={(e) => {
+              const selected = chapterList.data?.find(c => c.id === e.target.value);
+              const comicPath = chapter.publicPath ? '/truyen/' + chapter.publicPath.split('/').slice(2, 4).join('/') : undefined;
+              if (selected) navigate(chapterLink(selected, { publicPath: comicPath }));
+              else goChapter(e.target.value);
+            }}
           >
             {(chapterList.data ?? [{ id: chapter.id, number: chapter.number, title: chapter.title, publishedAt: null, pageCount: 0 }]).map((c) => (
               <option key={c.id} value={c.id}>

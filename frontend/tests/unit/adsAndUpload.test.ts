@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { AD_TRIGGER_SELECTOR, isAdFreePath, pageGroupOf } from '@/features/ads/Ads';
+import { comicLink, chapterLink, chapterRoute } from '@/app/paths';
 import { chapterNumberFromName } from '@/features/house/BulkUploadDialog';
 
+describe('public URL compatibility', () => {
+  it('keeps old API responses usable and preserves decimal chapters', () => {
+    expect(comicLink({ id: 'abc', slug: 'ten' })).toBe('/truyen/abc/ten');
+    const comic = {id:'abc',slug:'ten',publicPath:'/truyen/nhom/ten'};
+    expect(comicLink(comic)).toBe(comic.publicPath);
+    expect(chapterLink({id:'def',number:1.5},comic)).toBe('/doc/nhom/ten/chuong-1.5');
+    expect(chapterRoute('/doc/nhom/ten/chuong-1.5')).toEqual({house:'nhom',slug:'ten',number:'1.5'});
+  });
+});
 describe('ad placement', () => {
   it('keeps the house workspace and the admin console ad-free', () => {
     expect(isAdFreePath('/quan-ly-nhom')).toBe(true);

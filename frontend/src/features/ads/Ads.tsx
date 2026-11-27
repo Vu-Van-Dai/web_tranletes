@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import { publicApi } from '@/services/api';
 import type { AdPage, AdSlot as AdSlotName, AdUnit } from '@/types/api';
+import { comicRoute, chapterRoute } from '@/app/paths';
 import { cn } from '@/utils/format';
 
 /*
@@ -37,9 +38,11 @@ const targets = (unit: AdUnit, group: AdPage) => !unit.pages || unit.pages.lengt
 function useAdEligibility() {
   const { pathname } = useLocation();
   const group = pageGroupOf(pathname);
-  const id = pathname.split('/')[2] ?? '';
-  const comic = useQuery({ queryKey: ['comic', id], queryFn: () => publicApi.comic(id), enabled: group === 'comic' && !!id });
-  const chapter = useQuery({ queryKey: ['ad-chapter', id], queryFn: () => publicApi.chapter(id), enabled: group === 'reader' && !!id, staleTime: 30_000 });
+  const [, , id = '', slug] = pathname.split('/');
+  const friendlyComic = group === 'comic' ? comicRoute(id, slug) : null;
+  const friendlyChapter = group === 'reader' ? chapterRoute(pathname) : null;
+  const comic = useQuery({ queryKey: friendlyComic ? ['comic-slug', friendlyComic.house, friendlyComic.slug] : ['comic', id], queryFn: () => friendlyComic ? publicApi.comicBySlug(friendlyComic.house, friendlyComic.slug) : publicApi.comic(id), enabled: group === 'comic' && !!id });
+  const chapter = useQuery({ queryKey: friendlyChapter ? ['chapter-slug', friendlyChapter.house, friendlyChapter.slug, friendlyChapter.number] : ['ad-chapter', id], queryFn: () => friendlyChapter ? publicApi.chapterBySlug(friendlyChapter.house, friendlyChapter.slug, friendlyChapter.number) : publicApi.chapter(id), enabled: group === 'reader' && !!id, staleTime: 30_000 });
   // Fail closed while age classification is loading or cannot be retrieved.
   const allowed = !isAdFreePath(pathname) && group !== 'other' &&
     (group !== 'comic' || (comic.isSuccess && comic.data.isMature === false)) &&
