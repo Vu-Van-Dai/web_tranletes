@@ -5,7 +5,7 @@ namespace ComicPlatform.Application.Catalog;
 internal static class PublicCatalogPaths
 {
     public static string Comic(HouseRef house, string slug) => $"/truyen/{Uri.EscapeDataString(house.Slug)}/{Uri.EscapeDataString(slug)}";
-    public static string Chapter(HouseRef house, string slug, decimal number) => $"/doc/{Uri.EscapeDataString(house.Slug)}/{Uri.EscapeDataString(slug)}/chuong-{number.ToString(\"0.##\", CultureInfo.InvariantCulture)}";
+    public static string Chapter(HouseRef house, string slug, decimal number) => $"/doc/{Uri.EscapeDataString(house.Slug)}/{Uri.EscapeDataString(slug)}/chuong-{number.ToString("0.##", CultureInfo.InvariantCulture)}";
 }
 
 // ---------------- Shared ----------------

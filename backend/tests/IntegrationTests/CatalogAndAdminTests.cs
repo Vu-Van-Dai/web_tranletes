@@ -307,3 +307,36 @@ public class RateLimitTests(RateLimitedApiFactory factory) : IClassFixture<RateL
         }
     }
 }
+
+
+public class AdsProviderTests(ApiFactory factory) : IClassFixture<ApiFactory>
+{
+    [Fact]
+    public async Task Provider_switches_and_script_approval_filter_public_ads_and_reports_stay_private()
+    {
+        var s = new Scenario(factory);
+        var admin = await s.AdminAsync();
+        var anon = s.Anonymous();
+        var config = new
+        {
+            enabled = true,
+            providerEnabled = new Dictionary<string, bool> { ["adsterra"] = false },
+            allowDirectScripts = false,
+            reports = new[] { new { provider = "direct", month = "2026-11", currency = "USD", impressions = 1000, revenue = 1.5m } },
+            units = new object[]
+            {
+                new { id = "direct", name = "Direct", enabled = true, format = "banner", provider = "direct", imageUrl = "https://example.com/ad.png", targetUrl = "https://example.com", slots = new[] { "home_top" } },
+                new { id = "disabled", name = "Disabled", enabled = true, format = "banner", provider = "adsterra", html = "<div>Ad</div>", slots = new[] { "home_top" } },
+                new { id = "script", name = "Script", enabled = true, format = "script", provider = "custom", html = "<script>void 0</script>", scriptApproved = true }
+            }
+        };
+        var saved = await admin.PutAsync("/api/admin/ads", config);
+        Assert.Equal(2, saved.Int("schemaVersion"));
+        Assert.Single(saved.GetProperty("reports").EnumerateArray());
+        var site = (await anon.GetAsync("/api/site")).GetProperty("ads");
+        Assert.Single(site.GetProperty("units").EnumerateArray());
+        Assert.Equal("direct", site.GetProperty("units")[0].Str("id"));
+        Assert.True(!site.TryGetProperty("reports", out var report) || report.ValueKind == System.Text.Json.JsonValueKind.Null);
+        await anon.ProblemAsync(HttpMethod.Get, "/api/admin/ads", null, HttpStatusCode.Unauthorized);
+    }
+}

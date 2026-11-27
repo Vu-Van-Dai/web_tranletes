@@ -34,7 +34,7 @@ jobs:
         with:
           global-json-file: backend/global.json
       - run: dotnet build ComicPlatform.slnx --configuration Release
-      - run: dotnet test tests/IntegrationTests/ComicPlatform.IntegrationTests.csproj --configuration Release --no-build --filter FullyQualifiedName~PublicCatalogTests
+      - run: dotnet test tests/IntegrationTests/ComicPlatform.IntegrationTests.csproj --configuration Release --no-build --filter 'FullyQualifiedName~PublicCatalogTests|FullyQualifiedName~AdsProviderTests'
   image-cache:
     runs-on: ubuntu-latest
     defaults:

@@ -1,9 +1,10 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { useLocation } from 'react-router';
+import { useEffect, useLayoutEffect, useId, useMemo, useRef, useState } from 'react';
+import { Outlet, useLocation } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import { publicApi } from '@/services/api';
 import type { AdPage, AdSlot as AdSlotName, AdUnit } from '@/types/api';
+import { isAllowedAdUnit } from './providers';
 import { comicRoute, chapterRoute } from '@/app/paths';
 import { cn } from '@/utils/format';
 
@@ -48,12 +49,12 @@ function useAdEligibility() {
     (group !== 'comic' || (comic.isSuccess && comic.data.isMature === false)) &&
     (group !== 'reader' || (chapter.isSuccess && chapter.data.isMature === false));
   const site = useQuery({ queryKey: ['site'], queryFn: publicApi.site, staleTime: 60_000, refetchInterval: 60_000 });
-  return { enabled: allowed && site.data?.ads?.enabled === true, group, site };
+  return { enabled: allowed && site.isSuccess && site.data?.ads?.enabled === true, group, site };
 }
 function useAdUnits(): AdUnit[] {
   const { enabled, group, site } = useAdEligibility();
   // Do not mix third-party placements with AdSense auto ads in the same deployment.
-  return useMemo(() => (enabled && !adsenseClient ? (site.data?.ads?.units ?? []).filter(u => u.enabled && targets(u, group)) : []), [enabled, group, site.data]);
+  return useMemo(() => (enabled && !adsenseClient ? (site.data?.ads?.units ?? []).filter(u => site.data && isAllowedAdUnit(site.data.ads, u) && targets(u, group)) : []), [enabled, group, site.data]);
 }
 
 // ---------------- Frequency capping (per browser; storage may be unavailable) ----------------
@@ -160,9 +161,11 @@ declare global {
 
 /** Ad-network code is injected into the page itself (popunder, social bar, auto ads need the real document). */
 function injectScriptUnit(unit: AdUnit) {
+  if (!unit.scriptApproved) return;
   if (!unit.html || document.querySelector(`[data-rn-ad="${CSS.escape(unit.id)}"]`)) return;
   const host = document.createElement('div');
   host.dataset.rnAd = unit.id;
+  host.dataset.rnAdContent = unit.html;
   const template = document.createElement('template');
   template.innerHTML = unit.html;
   for (const node of Array.from(template.content.childNodes)) {
@@ -185,13 +188,21 @@ function injectScriptUnit(unit: AdUnit) {
  * Mounted once per public page shell (public layout and reader). Shows at most one pop-up at a time,
  * opens new-tab ads on the visitor's first click (browsers block it otherwise) and injects network scripts.
  */
+export function AdNavigationBoundary() {
+  const { pathname } = useLocation();
+  useLayoutEffect(() => {
+    if (window.__rnAdPath && window.__rnAdPath !== pathname) window.location.reload();
+  }, [pathname]);
+  return <Outlet />;
+}
+
 export function AdsRuntime() {
   const units = useAdUnits();
   const { pathname } = useLocation();
   const group = pageGroupOf(pathname);
-  const { enabled } = useAdEligibility();
+  const { enabled, site } = useAdEligibility();
   const [popup, setPopup] = useState<{ unit: AdUnit; path: string } | null>(null);
-  const adsenseAllowed = enabled && group === 'comic' && !!adsenseClient;
+  const adsenseAllowed = enabled && group === 'comic' && !!adsenseClient && site.data?.ads.providerEnabled?.adsense !== false;
 
   // Network scripts: once per page load.
   useEffect(() => {
@@ -200,7 +211,7 @@ export function AdsRuntime() {
     const injected = Array.from(document.querySelectorAll<HTMLElement>('[data-rn-ad]'));
     const hasAdsense = !!document.querySelector(`script[src^="${ADSENSE_SRC}"]`);
     if ((window.__rnAdPath && window.__rnAdPath !== pathname) ||
-        (window.__rnAdScripts && (!enabled || injected.some(el => !units.some(u => u.id === el.dataset.rnAd && u.format === 'script')))) ||
+        (window.__rnAdScripts && (!enabled || injected.some(el => !units.some(u => u.id === el.dataset.rnAd && u.format === 'script' && u.html === el.dataset.rnAdContent)))) ||
         (hasAdsense && !adsenseAllowed)) {
       window.location.reload();
       return;

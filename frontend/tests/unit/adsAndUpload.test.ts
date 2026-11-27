@@ -1,3 +1,5 @@
+import { isAllowedAdUnit } from '@/features/ads/providers';
+import type { AdUnit } from '@/types/api';
 import { describe, expect, it } from 'vitest';
 import { AD_TRIGGER_SELECTOR, isAdFreePath, pageGroupOf } from '@/features/ads/Ads';
 import { comicLink, chapterLink, chapterRoute } from '@/app/paths';
@@ -66,5 +68,16 @@ describe('new-tab ad triggers', () => {
     expect(hit('follow')).toBe(true);
     expect(hit('browse')).toBe(false);
     expect(hit('theme')).toBe(false);
+  });
+});
+
+describe('ad provider controls', () => {
+  const script = { id:'script',enabled:true,format:'script',provider:'custom',scriptApproved:true } as AdUnit;
+  const config = {enabled:true,units:[script]};
+  it('requires global and per-script permission and respects the provider kill switch', () => {
+    expect(isAllowedAdUnit(config,script)).toBe(false);
+    expect(isAllowedAdUnit({...config,allowDirectScripts:true},script)).toBe(true);
+    expect(isAllowedAdUnit({...config,allowDirectScripts:true,providerEnabled:{custom:false}},script)).toBe(false);
+    expect(isAllowedAdUnit({...config,allowDirectScripts:true},{...script,scriptApproved:false})).toBe(false);
   });
 });
