@@ -1,0 +1,30 @@
+name: Ad sandbox browser checks
+on:
+  pull_request:
+    paths:
+      - 'frontend/edge/adFrame*'
+      - 'frontend/functions/ad-frame.ts'
+      - 'frontend/src/features/ads/**'
+      - 'frontend/public/_routes.json'
+      - 'frontend/vite.config.ts'
+      - 'frontend/tests/browser/**'
+      - '.github/workflows/ad-sandbox-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  sandbox:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test --config tests/browser/playwright.config.ts

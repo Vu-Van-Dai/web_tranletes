@@ -92,29 +92,37 @@ function recordShown(unit: AdUnit, viewKey: string) {
 
 // ---------------- Creatives ----------------
 
-/** Network HTML runs in a sandboxed iframe (opaque origin: it cannot read the page or the session). */
+/** A real navigated document has its own CSP, unlike srcDoc which inherits the parent CSP. */
 function HtmlCreative({ html, title, minHeight = 90 }: { html: string; title: string; minHeight?: number }) {
   const frame = useRef<HTMLIFrameElement>(null);
+  const sent = useRef(false);
   const [height, setHeight] = useState(minHeight);
-  const id = useId();
-  useEffect(() => {
+  const id = useId().replace(/[^a-zA-Z0-9_-]/g, '_');
+  useLayoutEffect(() => {
     const onMessage = (e: MessageEvent) => {
-      if (e.source !== frame.current?.contentWindow) return;
-      const data = e.data as { rnAd?: string; h?: number };
-      if (data?.rnAd === id && typeof data.h === 'number') setHeight(Math.min(Math.max(data.h, 30), 1200));
+      if (e.origin !== 'null' || e.source !== frame.current?.contentWindow) return;
+      const data = e.data as { type?: string; id?: string; h?: number } | null;
+      if (data?.type === 'rn-ad-size' && data.id === id && typeof data.h === 'number' && Number.isFinite(data.h)) {
+        setHeight(Math.min(Math.max(Math.ceil(data.h), 30), 1200));
+      }
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, [id]);
-  const doc = `<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>html,body{margin:0;padding:0;display:flex;justify-content:center;background:transparent}</style></head><body>${html}<script>(function(){var s=function(){parent.postMessage({rnAd:${JSON.stringify(id)},h:document.documentElement.scrollHeight},'*')};new ResizeObserver(s).observe(document.documentElement);addEventListener('load',s);s();})();</script></body></html>`;
   return (
     <iframe
       ref={frame}
       title={title}
-      srcDoc={doc}
+      src="/ad-frame"
       sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms"
-      referrerPolicy="no-referrer-when-downgrade"
+      referrerPolicy="strict-origin-when-cross-origin"
       loading="lazy"
+      onLoad={() => {
+        if (sent.current || !frame.current?.contentWindow) return;
+        sent.current = true;
+        // The sandbox's origin is opaque, so a literal target origin cannot be used.
+        frame.current.contentWindow.postMessage({ type: 'rn-ad-init', id, html }, '*');
+      }}
       className="block w-full border-0"
       style={{ height }}
     />
@@ -129,7 +137,7 @@ function Creative({ unit, onClick }: { unit: AdUnit; onClick?: () => void }) {
       </a>
     );
   }
-  return unit.html ? <HtmlCreative html={unit.html} title={unit.name} /> : null;
+  return unit.html ? <HtmlCreative key={unit.id + ":" + unit.html} html={unit.html} title={unit.name} /> : null;
 }
 
 const AdLabel = () => <span className="text-[10px] font-medium uppercase tracking-wider text-muted">Quảng cáo</span>;

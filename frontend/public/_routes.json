@@ -24,7 +24,8 @@
     "/quan-ly-nhom",
     "/quan-ly-nhom/*",
     "/doc",
-    "/the-loai"
+    "/the-loai",
+    "/ad-frame"
   ],
   "exclude": []
 }
