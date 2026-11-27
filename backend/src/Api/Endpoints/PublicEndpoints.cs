@@ -28,6 +28,10 @@ public static class PublicEndpoints
         pub.MapGet("/comics", async (string? q, string? tag, string? house, string? status, string? sort, int? page, int? pageSize,
                 PublicCatalogService s, CancellationToken ct) =>
             Results.Ok(await s.ListComicsAsync(q, tag, house, status, sort, page, pageSize, ct))).CachePublic(30);
+        pub.MapGet("/comics/by-slug/{houseSlug}/{comicSlug}", async (string houseSlug, string comicSlug, PublicCatalogService s, CancellationToken ct) =>
+            Results.Ok(await s.GetComicBySlugAsync(houseSlug, comicSlug, ct))).CachePublic(30);
+        pub.MapGet("/chapters/by-slug/{houseSlug}/{comicSlug}/{number:decimal}", async (string houseSlug, string comicSlug, decimal number, PublicCatalogService s, CancellationToken ct) =>
+            Results.Ok(await s.GetChapterBySlugAsync(houseSlug, comicSlug, number, ct))).CachePublic(30);
         pub.MapGet("/comics/{id:guid}", async (Guid id, PublicCatalogService s, CancellationToken ct) =>
             Results.Ok(await s.GetComicAsync(id, ct))).CachePublic(30);
         pub.MapGet("/comics/{id:guid}/chapters", async (Guid id, PublicCatalogService s, CancellationToken ct) =>

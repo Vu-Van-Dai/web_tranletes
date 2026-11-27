@@ -42,6 +42,24 @@ public class PublicCatalogTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal(1, house.Int("comicCount"));
         Assert.Contains((await anon.GetAsync("/api/tags")).Items(), t => t.Str("slug") == "hanh-dong");
 
+        var detail = await anon.GetAsync($"/api/comics/{comicId}");
+        var slug = detail.Str("slug");
+        var friendlyComic = $"/api/comics/by-slug/meo-dich-truyen/{slug}";
+        var friendlyChapter = $"/api/chapters/by-slug/meo-dich-truyen/{slug}/1";
+        Assert.Equal(comicId, (await anon.GetAsync(friendlyComic)).Id());
+        Assert.Equal(ch1, (await anon.GetAsync(friendlyChapter)).Id());
+        await anon.ProblemAsync(HttpMethod.Get, friendlyChapter + ".5", null, HttpStatusCode.NotFound);
+        await anon.ProblemAsync(HttpMethod.Get, $"/api/comics/by-slug/khong-ton-tai/{slug}", null, HttpStatusCode.NotFound);
+        var sitemap = await anon.Http.GetStringAsync("/sitemap.xml");
+        Assert.Contains($"/truyen/{comicId}/{slug}", sitemap);
+        Assert.Contains($"/doc/{ch1}", sitemap);
+        Assert.Contains("/the-loai/hanh-dong", sitemap);
+        Assert.Contains("/nhom-dich/meo-dich-truyen", sitemap);
+        var friendlySitemap = await anon.Http.GetStringAsync("/sitemap.xml?friendly=true");
+        Assert.Contains($"/truyen/meo-dich-truyen/{slug}", friendlySitemap);
+        Assert.Contains($"/doc/meo-dich-truyen/{slug}/chuong-1", friendlySitemap);
+        Assert.DoesNotContain($"/truyen/{comicId}/", friendlySitemap);
+
         // Chapter navigation.
         var reader1 = await anon.GetAsync($"/api/chapters/{ch1}/reader");
         Assert.Equal(ch2, reader1.GetProperty("chapter").GetProperty("next").Id());
@@ -53,6 +71,9 @@ public class PublicCatalogTests(ApiFactory factory) : IClassFixture<ApiFactory>
         await admin.PostAsync($"/api/admin/translation-houses/{houseId}/suspend", new { reason = "Vi phạm bản quyền" });
         await anon.ProblemAsync(HttpMethod.Get, $"/api/comics/{comicId}", null, HttpStatusCode.NotFound);
         await anon.ProblemAsync(HttpMethod.Get, $"/api/chapters/{ch1}/reader", null, HttpStatusCode.NotFound);
+        await anon.ProblemAsync(HttpMethod.Get, friendlyComic, null, HttpStatusCode.NotFound);
+        await anon.ProblemAsync(HttpMethod.Get, friendlyChapter, null, HttpStatusCode.NotFound);
+        Assert.DoesNotContain($"/doc/{ch1}", await anon.Http.GetStringAsync("/sitemap.xml"));
         Assert.Equal("house_suspended", await owner.ProblemAsync(HttpMethod.Get, "/api/translation-house/comics", null, HttpStatusCode.Forbidden));
 
         await admin.PostAsync($"/api/admin/translation-houses/{houseId}/activate");

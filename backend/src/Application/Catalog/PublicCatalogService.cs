@@ -69,6 +69,26 @@ public sealed class PublicCatalogService(IAppDbContext db, IPublicUrls urls)
         return new PagedResult<ComicCardDto>(rows.Select(MapCard).ToList(), paging.Page, paging.PageSize, total);
     }
 
+    // Slugs are unique within a house. UUIDs remain the storage and reader identifiers.
+    public async Task<ComicDetailDto> GetComicBySlugAsync(string houseSlug, string comicSlug, CancellationToken ct)
+    {
+        houseSlug = houseSlug.Trim().ToLowerInvariant();
+        comicSlug = comicSlug.Trim().ToLowerInvariant();
+        var id = await VisibleComics.Where(c => c.TranslationHouse!.Slug == houseSlug && c.Slug == comicSlug)
+            .Select(c => (Guid?)c.Id).SingleOrDefaultAsync(ct) ?? throw Errors.NotFound("Truyện");
+        return await GetComicAsync(id, ct);
+    }
+
+    public async Task<ChapterSummaryDto> GetChapterBySlugAsync(string houseSlug, string comicSlug, decimal number, CancellationToken ct)
+    {
+        houseSlug = houseSlug.Trim().ToLowerInvariant();
+        comicSlug = comicSlug.Trim().ToLowerInvariant();
+        var id = await VisibleChapters.Where(ch => ch.Comic!.TranslationHouse!.Slug == houseSlug
+                && ch.Comic.Slug == comicSlug && ch.ChapterNumber == number && ch.PublishedPackageId != null)
+            .Select(ch => (Guid?)ch.Id).SingleOrDefaultAsync(ct) ?? throw Errors.NotFound("Chương");
+        return await GetChapterAsync(id, ct);
+    }
+
     public async Task<ComicDetailDto> GetComicAsync(Guid comicId, CancellationToken ct)
     {
         var c = await VisibleComics.Where(x => x.Id == comicId)

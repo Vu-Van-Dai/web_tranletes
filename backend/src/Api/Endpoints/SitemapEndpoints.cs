@@ -1,35 +1,50 @@
+using System.Globalization;
 using System.Text;
 using System.Xml;
 using ComicPlatform.Api.Infrastructure;
 using ComicPlatform.Application.Abstractions;
-using ComicPlatform.Application.Catalog;
 using ComicPlatform.Domain.Catalog;
 using ComicPlatform.Domain.Tenancy;
 using Microsoft.EntityFrameworkCore;
 
 namespace ComicPlatform.Api.Endpoints;
 
-/// <summary>Search-engine sitemap for public comic pages.</summary>
 public static class SitemapEndpoints
 {
     private const string SiteOrigin = "https://rongnho.shop";
+    private const int MaxUrls = 50_000;
+    private static string ComicPath(Guid id, string house, string slug, bool friendly) =>
+        friendly ? $"/truyen/{Uri.EscapeDataString(house)}/{Uri.EscapeDataString(slug)}" : $"/truyen/{id:D}/{Uri.EscapeDataString(slug)}";
+    private static string ChapterPath(Guid id, string house, string slug, decimal number, bool friendly) =>
+        friendly ? $"/doc/{Uri.EscapeDataString(house)}/{Uri.EscapeDataString(slug)}/chuong-{number.ToString("0.##", CultureInfo.InvariantCulture)}" : $"/doc/{id:D}";
 
     public static IEndpointRouteBuilder MapSitemapEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/sitemap.xml", async (IAppDbContext db, CancellationToken ct) =>
+        // Opt in to friendly URLs only after the matching frontend routes are deployed.
+        app.MapGet("/sitemap.xml", async (bool? friendly, IAppDbContext db, CancellationToken ct) =>
         {
-            // Sitemap must only contain comics available to anonymous visitors.
-            var comics = await db.Comics
-                .IgnoreQueryFilters([QueryFilters.Tenant])
-                .AsNoTracking()
-                .Where(c => c.DeletedAt == null
-                    && c.PublishedChapterCount > 0
-                    && c.TranslationHouse != null
-                    && c.TranslationHouse.Status == HouseStatus.Active)
-                .OrderByDescending(c => c.LastChapterPublishedAt)
-                .Select(c => new { c.Id, c.Slug, c.LastChapterPublishedAt, c.UpdatedAt })
-                .Take(49997)
-                .ToListAsync(ct);
+            var visible = db.Comics.IgnoreQueryFilters([QueryFilters.Tenant]).AsNoTracking()
+                .Where(c => c.DeletedAt == null && c.PublishedChapterCount > 0 &&
+                    c.TranslationHouse != null && c.TranslationHouse.Status == HouseStatus.Active);
+            var comics = await visible.OrderByDescending(c => c.LastChapterPublishedAt).ThenBy(c => c.Id)
+                .Select(c => new { c.Id, c.Slug, House = c.TranslationHouse!.Slug, c.LastChapterPublishedAt, c.UpdatedAt })
+                .Take(MaxUrls - 8).ToListAsync(ct);
+            var remaining = MaxUrls - 8 - comics.Count;
+            var houses = await db.TranslationHouses.AsNoTracking()
+                .Where(h => h.Status == HouseStatus.Active && visible.Any(c => c.TranslationHouseId == h.Id))
+                .OrderBy(h => h.Slug).Select(h => h.Slug).Take(remaining).ToListAsync(ct);
+            remaining -= houses.Count;
+            var tags = await db.Tags.AsNoTracking()
+                .Where(t => visible.Any(c => c.Tags.Any(ctag => ctag.TagId == t.Id)))
+                .OrderBy(t => t.Slug).Select(t => t.Slug).Take(remaining).ToListAsync(ct);
+            remaining -= tags.Count;
+            var chapters = await db.Chapters.IgnoreQueryFilters([QueryFilters.Tenant]).AsNoTracking()
+                .Where(ch => ch.Status == ChapterStatus.Published && ch.PublishedPackageId != null &&
+                    visible.Any(c => c.Id == ch.ComicId && !c.IsMature))
+                .OrderByDescending(ch => ch.PublishedAt).ThenBy(ch => ch.Id)
+                .Select(ch => new { ch.Id, ch.ChapterNumber, ch.PublishedAt, ch.UpdatedAt,
+                    Slug = ch.Comic!.Slug, House = ch.Comic.TranslationHouse!.Slug })
+                .Take(remaining).ToListAsync(ct);
 
             using var stream = new MemoryStream();
             var settings = new XmlWriterSettings { Async = true, Encoding = new UTF8Encoding(false), Indent = true };
@@ -38,30 +53,27 @@ public static class SitemapEndpoints
                 await writer.WriteStartDocumentAsync();
                 await writer.WriteStartElementAsync(null, "urlset", "http://www.sitemaps.org/schemas/sitemap/0.9");
 
-                async Task WriteUrl(string loc, DateTimeOffset? modified)
+                async Task WriteUrl(string path, DateTimeOffset? modified = null)
                 {
                     await writer.WriteStartElementAsync(null, "url", null);
-                    await writer.WriteElementStringAsync(null, "loc", null, loc);
+                    await writer.WriteElementStringAsync(null, "loc", null, SiteOrigin + path);
                     if (modified is not null)
-                        await writer.WriteElementStringAsync(null, "lastmod", null, modified.Value.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ"));
+                        await writer.WriteElementStringAsync(null, "lastmod", null, modified.Value.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture));
                     await writer.WriteEndElementAsync();
                 }
 
-                await WriteUrl($"{SiteOrigin}/", DateTimeOffset.UtcNow);
-                await WriteUrl($"{SiteOrigin}/truyen", DateTimeOffset.UtcNow);
-                await WriteUrl($"{SiteOrigin}/nhom-dich", DateTimeOffset.UtcNow);
-                await WriteUrl($"{SiteOrigin}/gioi-thieu", null);
-                await WriteUrl($"{SiteOrigin}/chinh-sach-bao-mat", null);
-                await WriteUrl($"{SiteOrigin}/lien-he", null);
-                await WriteUrl($"{SiteOrigin}/dieu-khoan-su-dung", null);
-                await WriteUrl($"{SiteOrigin}/faq", null);
-
+                foreach (var path in new[] { "/", "/truyen", "/nhom-dich", "/gioi-thieu", "/chinh-sach-bao-mat", "/lien-he", "/dieu-khoan-su-dung", "/faq" })
+                    await WriteUrl(path);
                 foreach (var comic in comics)
-                {
-                    // This matches the frontend route: /truyen/{id}/{slug}
-                    var slug = Uri.EscapeDataString(comic.Slug);
-                    await WriteUrl($"{SiteOrigin}/truyen/{comic.Id:D}/{slug}", comic.LastChapterPublishedAt ?? comic.UpdatedAt);
-                }
+                    await WriteUrl(ComicPath(comic.Id, comic.House, comic.Slug, friendly == true),
+                        comic.LastChapterPublishedAt is { } published && published > comic.UpdatedAt ? published : comic.UpdatedAt);
+                foreach (var house in houses)
+                    await WriteUrl("/nhom-dich/" + Uri.EscapeDataString(house));
+                foreach (var tag in tags)
+                    await WriteUrl("/the-loai/" + Uri.EscapeDataString(tag));
+                foreach (var chapter in chapters)
+                    await WriteUrl(ChapterPath(chapter.Id, chapter.House, chapter.Slug, chapter.ChapterNumber, friendly == true),
+                        chapter.PublishedAt is { } published && published > chapter.UpdatedAt ? published : chapter.UpdatedAt);
 
                 await writer.WriteEndElementAsync();
                 await writer.WriteEndDocumentAsync();
