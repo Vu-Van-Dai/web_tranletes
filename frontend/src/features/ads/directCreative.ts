@@ -31,7 +31,6 @@ export function parseDirectTag(html: string) {
 export function directTagKind(html: string): 'async' | 'sync' | 'invalid' {
   try { return parseDirectTag(html).sync ? 'sync' : 'async'; } catch { return 'invalid'; }
 }
-}
 
 /** Mount at most once per unit and script URL in a document. No automatic retries. */
 export function mountDirectBanner(host: HTMLElement, id: string, html: string, signal: AbortSignal, beforeRun: () => void, onFailure?: (reason:DirectFailure)=>void): Promise<boolean> {

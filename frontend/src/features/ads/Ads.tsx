@@ -174,13 +174,13 @@ function DirectBanner({ unit, slot, className, onFailure }: {unit: AdUnit; slot:
     const start = window.setTimeout(async () => {
       if (controller.signal.aborted || (window.__rnAdPath && window.__rnAdPath !== pathname)) return;
       noteAd(unit.id,slot,'loading');
-      let failure: import('./directCreative').DirectFailure = 'script-error';
+      const failure: {reason:import('./directCreative').DirectFailure} = {reason:'script-error'};
       const ok = await mountDirectBanner(el, unit.id, unit.html!, controller.signal, () => {
         window.__rnAdScripts = true;
         window.__rnAdPath = pathname;
-      }, reason => {failure=reason;});
+      }, reason => {failure.reason=reason;});
       if (controller.signal.aborted) return;
-      if (!ok) { noteAd(unit.id,slot,failure==='cancelled'?'script-error':failure); setEmpty(true);onFailure?.();return; }
+      if (!ok) { noteAd(unit.id,slot,failure.reason==='cancelled'?'script-error':failure.reason); setEmpty(true);onFailure?.();return; }
       // Cannot inspect cross-origin iframe contents or assert a counted impression.
       noFill = window.setTimeout(() => {
         if(controller.signal.aborted)return;
@@ -225,7 +225,7 @@ export function AdSlot({slot,className}:{slot:AdSlotName;className?:string}){
   const eligible=units.filter(u=>fitsSlot(u,slot,size.width,size.viewport));
   const primary=weightedPick(eligible,pick);
   const failedPrimary=primary && failed===primary.id+':'+primary.html;
-  const unit=failedPrimary?imageFallback(eligible,primary.id,pick):primary;
+  const unit=primary&&failedPrimary?imageFallback(eligible,primary.id,pick):primary;
   const fail=()=>{if(primary&&!failedPrimary)setFailed(primary.id+':'+primary.html);};
   useEffect(()=>{if(failedPrimary&&unit)noteAd(unit.id,slot,'fallback');},[failedPrimary,unit,slot]);
   return <div ref={host} data-ad-slot-wrapper="" className={cn('w-full min-w-0',className)}>
