@@ -83,6 +83,7 @@ export function HomePage() {
       </Section>
 
       <AdSlot slot="home_middle" className="mt-10" />
+      <AdSlot slot="home_extra" className="mt-6" />
       <div className="grid gap-x-8 lg:grid-cols-[1fr_20rem]">
         <div>
           <Section title="Truyện mới" icon={<Flame className="h-5 w-5" />} link={`${paths.browse}?sort=new`}>

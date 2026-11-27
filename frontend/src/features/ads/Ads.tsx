@@ -7,6 +7,7 @@ import type { AdPage, AdSlot as AdSlotName, AdUnit } from '@/types/api';
 import { isAllowedAdUnit, isDirectBanner, requiresDirectScript } from './providers';
 import { hasVisibleCreative, loadedDirectBanners, mountDirectBanner } from './directCreative';
 import { useAuth } from '@/features/auth/AuthProvider';
+import { dimensions, fitsSlot, weightedPick, standaloneLink, noteAd } from './placement';
 import { comicRoute, chapterRoute } from '@/app/paths';
 import { cn } from '@/utils/format';
 
@@ -140,7 +141,9 @@ function Creative({ unit, onClick }: { unit: AdUnit; onClick?: () => void }) {
       </a>
     );
   }
-  return unit.html ? <HtmlCreative key={unit.id + ":" + unit.html} html={unit.html} title={unit.name} /> : null;
+  const link=standaloneLink(unit.html);
+  if(link)return <a href={link.href} target="_blank" rel="sponsored noopener noreferrer" onClick={onClick} className="mx-auto my-2 inline-flex rounded-lg border border-line px-4 py-2 text-sm font-medium text-accent hover:underline">{link.label}</a>;
+  return unit.html ? <HtmlCreative key={unit.id+':'+unit.html} html={unit.html} title={unit.name} minHeight={dimensions(unit)?.height??90}/> : null;
 }
 
 const AdLabel = () => <span className="text-[10px] font-medium uppercase tracking-wider text-muted">Quảng cáo</span>;
@@ -163,15 +166,17 @@ function DirectBanner({ unit, slot, className }: {unit: AdUnit; slot: AdSlotName
     // Defer execution past React StrictMode's trial mount.
     const start = window.setTimeout(async () => {
       if (controller.signal.aborted || (window.__rnAdPath && window.__rnAdPath !== pathname)) return;
+      noteAd(unit.id,slot,'loading');
       const ok = await mountDirectBanner(el, unit.id, unit.html!, controller.signal, () => {
         window.__rnAdScripts = true;
         window.__rnAdPath = pathname;
       });
       if (controller.signal.aborted) return;
-      if (!ok) { setEmpty(true); return; }
+      if (!ok) { noteAd(unit.id,slot,'script-error'); setEmpty(true); return; }
       // Cannot inspect cross-origin iframe contents or assert a counted impression.
       noFill = window.setTimeout(() => {
-        if (!controller.signal.aborted && !hasVisibleCreative(el)) setEmpty(true);
+        if(controller.signal.aborted)return;
+        const visible=hasVisibleCreative(el);noteAd(unit.id,slot,visible?'element':'no-element');if(!visible)setEmpty(true);
       }, 10000);
     }, 0);
     return () => {
@@ -179,29 +184,36 @@ function DirectBanner({ unit, slot, className }: {unit: AdUnit; slot: AdSlotName
       clearTimeout(start);
       if (noFill !== undefined) clearTimeout(noFill);
     };
-  }, [unit.id, unit.html, pathname, status]);
+  }, [unit.id, unit.html, pathname, status, slot]);
   if (empty || status !== 'anonymous') return null;
   return (
     <aside className={cn('rounded-2xl border border-line bg-surface p-2 text-center', className)} aria-label="Quảng cáo" data-ad="" data-testid={'ad-slot-' + slot}>
       <AdLabel />
-      <div ref={host} className="mx-auto w-full overflow-hidden" />
+      <div ref={host} className="mx-auto w-full overflow-hidden" style={{maxWidth:dimensions(unit)?.width}} />
     </aside>
   );
 }
 
-/** Banner position. Several banners in one slot rotate (one random pick per mount). */
-export function AdSlot({ slot, className }: { slot: AdSlotName; className?: string }) {
-  const units = useAdUnits().filter((u) => u.format === 'banner' && u.slots?.includes(slot));
-  const [pick] = useState(() => Math.random());
-  if (units.length === 0) return null;
-  const unit = units[Math.floor(pick * units.length) % units.length]!;
-  if (isDirectBanner(unit)) return <DirectBanner key={unit.id + ':' + unit.html} unit={unit} slot={slot} className={className} />;
-  return (
-    <aside className={cn('rounded-2xl border border-line bg-surface p-2 text-center', className)} aria-label="Quảng cáo" data-ad="" data-testid={`ad-slot-${slot}`}>
-      <AdLabel />
-      <Creative unit={unit} />
-    </aside>
-  );
+/** One weighted choice per slot; independent slots can coexist. */
+export function AdSlot({slot,className}:{slot:AdSlotName;className?:string}){
+  const units=useAdUnits();
+  const host=useRef<HTMLDivElement>(null);
+  const [size,setSize]=useState({width:0,viewport:0});
+  const [pick]=useState(()=>Math.random());
+  useLayoutEffect(()=>{
+    const el=host.current;if(!el)return;
+    const measure=()=>{const next={width:Math.max(0,el.clientWidth-18),viewport:window.innerWidth};setSize(old=>old.width===next.width&&old.viewport===next.viewport?old:next);};
+    measure();const observer=new ResizeObserver(measure);observer.observe(el);window.addEventListener('resize',measure);
+    return ()=>{observer.disconnect();window.removeEventListener('resize',measure);};
+  },[]);
+  const eligible=units.filter(u=>fitsSlot(u,slot,size.width,size.viewport));
+  const unit=weightedPick(eligible,pick);
+  return <div ref={host} className={cn('w-full min-w-0',className)} style={unit?undefined:{marginTop:0,marginBottom:0,padding:0}}>
+    {unit&&(isDirectBanner(unit)?<DirectBanner key={unit.id+':'+unit.html} unit={unit} slot={slot}/>:(
+      <aside className="rounded-2xl border border-line bg-surface p-2 text-center" aria-label="Quảng cáo" data-ad="" data-testid={'ad-slot-'+slot}>
+        <AdLabel/><div className="mx-auto w-full overflow-hidden" style={{maxWidth:dimensions(unit)?.width}}><Creative unit={unit}/></div>
+      </aside>))}
+  </div>;
 }
 
 // ---------------- Pop-ups, new-tab ads, network scripts ----------------
@@ -236,6 +248,7 @@ function injectScriptUnit(unit: AdUnit) {
   document.body.appendChild(host);
   window.__rnAdScripts = true;
   window.__rnAdPath = window.location.pathname;
+  noteAd(unit.id,'network','injected');
 }
 
 /**
@@ -256,6 +269,7 @@ export function AdsRuntime() {
   const { pathname } = useLocation();
   const group = pageGroupOf(pathname);
   const { enabled, site } = useAdEligibility();
+  const [networkPick]=useState(()=>Math.random());
   const [popup, setPopup] = useState<{ unit: AdUnit; path: string } | null>(null);
   const adsenseAllowed = enabled && group === 'comic' && !!adsenseClient && site.data?.ads.providerEnabled?.adsense !== false;
 
@@ -272,12 +286,20 @@ export function AdsRuntime() {
       return;
     }
     if (!enabled) return;
-    units.filter((u) => u.format === 'script' && targets(u, group)).forEach(injectScriptUnit);
-  }, [units, group, pathname, enabled, adsenseAllowed]);
+    // Cap injection, not the vendor's actual popup count or paid impressions.
+    if(injected.length)return;
+    const candidate=weightedPick(units.filter(u=>u.format==='script'&&targets(u,group)&&isDue(u,pathname)),networkPick);
+    if(!candidate)return;
+    const timer=window.setTimeout(()=>{
+      if(document.querySelector('[data-rn-ad]')||!isDue(candidate,pathname))return;
+      recordShown(candidate,pathname);injectScriptUnit(candidate);
+    },Math.max(0,candidate.delaySeconds??0)*1000);
+    return ()=>clearTimeout(timer);
+  }, [units, group, pathname, enabled, adsenseAllowed, networkPick]);
 
   // Pop-up: first eligible unit for this page, after its delay.
   useEffect(() => {
-    if (isAdFreePath(pathname)) return;
+    if (isAdFreePath(pathname) || units.some(u=>u.format==='script')) return;
     const unit = units.find((u) => u.format === 'popup' && targets(u, group) && isDue(u, pathname));
     if (!unit) return;
     const id = setTimeout(() => {
@@ -296,7 +318,7 @@ export function AdsRuntime() {
   // the reader can close. Trigger "any": the next click anywhere. Trigger "content": clicks on a story, a chapter
   // or a marked action button. Each unit's frequency cap applies (0 = once per page view).
   useEffect(() => {
-    if (isAdFreePath(pathname)) return;
+    if (isAdFreePath(pathname) || units.some(u=>u.format==='script'||u.format==='popup')) return;
     const candidates = units.filter((u) => u.format === 'newtab' && u.targetUrl && targets(u, group));
     if (candidates.length === 0) return;
     const shownAt = Date.now();

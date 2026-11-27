@@ -8,6 +8,7 @@ import { ApiError } from '@/services/http';
 import type { AdFormat, AdPage, AdSlot, AdUnit, AdsConfig, AdProvider, AdProviderReport } from '@/types/api';
 
 import { providerLabels, providerOf } from '@/features/ads/providers';
+import { dimensions, readDiagnostics, suggestedAdsterraLayout } from '@/features/ads/placement';
 
 const formatLabel: Record<AdFormat, string> = {
   banner: 'Banner trong trang',
@@ -34,6 +35,9 @@ const slotLabel: Record<AdSlot, string> = {
   house_top: 'Trang nhóm dịch',
   reader_top: 'Trang đọc – trên trang đầu',
   reader_bottom: 'Trang đọc – cuối chương',
+  home_extra: 'Trang chủ – banner bổ sung',
+  side_left: 'Desktop rộng – bên trái (sticky)',
+  side_right: 'Desktop rộng – bên phải (sticky)',
 };
 
 const pageLabel: Record<AdPage, string> = {
@@ -68,7 +72,7 @@ function describe(unit: AdUnit): string {
   if (unit.format === 'banner') return (unit.slots ?? []).map((s) => slotLabel[s]).join(' · ');
   const where = unit.pages && unit.pages.length > 0 ? unit.pages.map((p) => pageLabel[p]).join(', ') : 'Mọi trang công khai';
   const trigger = unit.format === 'newtab' ? (unit.trigger === 'content' ? ' · khi bấm truyện/chương' : ' · lần bấm đầu tiên') : '';
-  const freq = unit.format === 'script' ? '' : unit.frequencyMinutes ? ` · tối đa 1 lần / ${unit.frequencyMinutes} phút` : ' · mỗi lần mở trang';
+  const freq = unit.frequencyMinutes ? ` · tối đa 1 lần / ${unit.frequencyMinutes} phút` : ' · mỗi lần mở trang';
   const close = unit.format === 'popup' ? (unit.closeMode === 'countdown' ? ` · bắt buộc xem ${unit.countdownSeconds}s` : ' · đóng ngay được') : '';
   return where + close + trigger + freq;
 }
@@ -78,6 +82,7 @@ export function AdminAdsPage() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const ads = useQuery({ queryKey: ['admin', 'ads'], queryFn: adminApi.ads });
+  const [diagnostics,setDiagnostics]=useState(readDiagnostics);
   const [draft, setDraft] = useState<AdsConfig | null>(null);
   const [editing, setEditing] = useState<AdUnit | null>(null);
   const [deleting, setDeleting] = useState<AdUnit | null>(null);
@@ -127,6 +132,14 @@ export function AdminAdsPage() {
               checked={config.enabled} onChange={(e) => update({ ...config, enabled: e.target.checked })} data-testid="ads-enabled" />
           </div>
           {config.schemaVersion === 2 ? <ProviderSettings config={config} update={update} /> : <p className="card p-4 text-sm text-muted">Quản lý theo nhà cung cấp sẽ khả dụng sau khi backend được cập nhật.</p>}
+          <section className="card space-y-2 p-4">
+            <h2 className="font-semibold">Bố cục và chẩn đoán</h2>
+            <p className="text-sm text-muted">Sắp xếp Adsterra theo kích thước tag, giữ trạng thái bật và phê duyệt. Kiểm tra lại rồi lưu. Chẩn đoán chỉ của trình duyệt hiện tại, không phải lượt hiển thị tính tiền.</p>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={()=>update({...config,units:config.units.map(suggestedAdsterraLayout)})}>Sắp xếp Adsterra theo kích thước</Button>
+              <Button variant="outline" onClick={()=>setDiagnostics(readDiagnostics())}>Đọc lại chẩn đoán cục bộ</Button>
+            </div>
+          </section>
           {config.units.length === 0 ? (
             <EmptyState title="Chưa có quảng cáo nào" description="Thêm banner, pop-up, tab mới hoặc mã của mạng quảng cáo." />
           ) : (
@@ -136,7 +149,8 @@ export function AdminAdsPage() {
                   {u.imageUrl ? <img src={u.imageUrl} alt="" className="h-12 w-20 shrink-0 rounded-lg object-cover" /> : <span className="grid h-12 w-20 shrink-0 place-items-center rounded-lg bg-surface-2 text-xs text-muted">{u.html ? 'HTML' : '—'}</span>}
                   <div className="min-w-0 flex-1">
                     <p className="flex flex-wrap items-center gap-2 font-medium">{u.name}<Badge tone="accent">{formatLabel[u.format]}</Badge><Badge>{providerLabels[providerOf(u)]}</Badge>{u.format === 'banner' && u.scriptApproved && <Badge>Script trực tiếp</Badge>}{!u.enabled && <Badge>Đang tắt</Badge>}</p>
-                    <p className="truncate text-xs text-muted">{describe(u)}</p>
+                    <p className="text-xs text-muted">{describe(u)} · {u.device??'all'} · {dimensions(u)?dimensions(u)!.width+'×'+dimensions(u)!.height:'tự thích ứng'} · trọng số {u.weight??1}{u.placementId?' · ID '+u.placementId:''}</p>
+                    {diagnostics[u.id] && <p className="text-xs text-muted">Chẩn đoán cục bộ: {diagnostics[u.id]!.state} · {new Date(diagnostics[u.id]!.at).toLocaleString('vi-VN')}</p>}
                   </div>
                   <Checkbox label="Bật" checked={u.enabled} onChange={(e) => upsert({ ...u, enabled: e.target.checked })} />
                   <Button variant="ghost" size="icon" aria-label={`Sửa ${u.name}`} onClick={() => setEditing(u)}><Pencil className="h-4 w-4" /></Button>
@@ -273,6 +287,15 @@ function AdEditor({ unit, providerSettings, onCancel, onSave }: { unit: AdUnit; 
           </Field>
         )}
 
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Placement ID (tùy chọn)">{id=><Input id={id} maxLength={80} value={u.placementId??''} onChange={e=>set({placementId:e.target.value||null})}/>}</Field>
+          <Field label="Trọng số luân phiên (1–100)">{id=><Input id={id} type="number" min={1} max={100} value={u.weight??1} onChange={e=>set({weight:Number(e.target.value)})}/>}</Field>
+          {u.format==='banner' && <>
+            <Field label="Thiết bị">{id=><Select id={id} value={u.device??'all'} onChange={e=>set({device:e.target.value as 'all'|'desktop'|'mobile'})}><option value="all">Mọi thiết bị</option><option value="desktop">Máy tính</option><option value="mobile">Điện thoại</option></Select>}</Field>
+            <Field label="Rộng (px, bỏ trống để đọc tag)">{id=><Input id={id} type="number" min={1} max={2000} value={u.width??''} onChange={e=>set({width:e.target.value?Number(e.target.value):null})}/>}</Field>
+            <Field label="Cao (px, bỏ trống để đọc tag)">{id=><Input id={id} type="number" min={1} max={1200} value={u.height??''} onChange={e=>set({height:e.target.value?Number(e.target.value):null})}/>}</Field>
+          </>}
+        </div>
         {u.format === 'banner' ? (
           <fieldset>
             <legend className="mb-2 text-sm font-medium">Vị trí hiển thị</legend>
@@ -308,10 +331,10 @@ function AdEditor({ unit, providerSettings, onCancel, onSave }: { unit: AdUnit; 
             )}
           </div>
         )}
-        {u.format !== 'banner' && u.format !== 'script' && (
+        {u.format !== 'banner' && (
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Hiện sau (giây)">{(id) => <Input id={id} type="number" min={0} max={300} value={u.delaySeconds ?? 0} onChange={(e) => set({ delaySeconds: Number(e.target.value) })} />}</Field>
-            <Field label="Tần suất tối đa (phút)" hint="0 = mỗi lần mở trang. Đếm riêng từng trình duyệt.">
+            <Field label="Tần suất tối đa (phút)" hint="0 = mỗi lần mở trang. Với mã mạng, giới hạn lần nạp script, không kiểm soát popup do nhà cung cấp tạo.">
               {(id) => <Input id={id} type="number" min={0} max={10080} value={u.frequencyMinutes ?? 0} onChange={(e) => set({ frequencyMinutes: Number(e.target.value) })} />}
             </Field>
           </div>

@@ -333,7 +333,7 @@ public class AdsProviderTests(ApiFactory factory) : IClassFixture<ApiFactory>
             reports = new[] { new { provider = "direct", month = "2026-11", currency = "USD", impressions = 1000, revenue = 1.5m } },
             units = new object[]
             {
-                new { id = "direct", name = "Direct", enabled = true, format = "banner", provider = "direct", imageUrl = "https://example.com/ad.png", targetUrl = "https://example.com", slots = new[] { "home_top" } },
+                new { id = "direct", name = "Direct", enabled = true, format = "banner", provider = "direct", imageUrl = "https://example.com/ad.png", targetUrl = "https://example.com", slots = new[] { "side_left" }, width = 160, height = 600, device = "desktop", weight = 5, placementId = "example" },
                 new { id = "disabled", name = "Disabled", enabled = true, format = "banner", provider = "adsterra", html = "<div>Ad</div>", slots = new[] { "home_top" } },
                 new { id = "script", name = "Script", enabled = true, format = "script", provider = "custom", html = "<script>void 0</script>", scriptApproved = true },
                 new { id = "direct-banner", name = "Approved banner", enabled = true, format = "banner", provider = "custom", html = "<script src=\"https://example.com/ad.js\"></script>", slots = new[] { "home_middle" }, scriptApproved = true }
@@ -346,6 +346,9 @@ public class AdsProviderTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var site = (await anon.GetAsync("/api/site")).GetProperty("ads");
         Assert.Single(site.GetProperty("units").EnumerateArray());
         Assert.Equal("direct", site.GetProperty("units")[0].Str("id"));
+        Assert.Equal(160, site.GetProperty("units")[0].Int("width"));
+        Assert.Equal("desktop", site.GetProperty("units")[0].Str("device"));
+        Assert.Equal(5, site.GetProperty("units")[0].Int("weight"));
         Assert.True(!site.TryGetProperty("reports", out var report) || report.ValueKind == System.Text.Json.JsonValueKind.Null);
         await anon.ProblemAsync(HttpMethod.Get, "/api/admin/ads", null, HttpStatusCode.Unauthorized);
     }
