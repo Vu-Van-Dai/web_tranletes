@@ -12,7 +12,7 @@ namespace ComicPlatform.Application.Settings;
 /// <summary>
 /// One advertisement. Formats:
 /// <list type="bullet">
-/// <item><c>banner</c> — inline slot(s) on public pages: image + link, or ad-network HTML (rendered in a sandboxed iframe).</item>
+/// <item><c>banner</c> — inline slot(s) on public pages: image + link, or ad-network HTML (sandboxed by default; approved direct banners require the global switch).</item>
 /// <item><c>popup</c> — overlay panel; closable at once (<c>button</c>) or only after a countdown (<c>countdown</c>).</item>
 /// <item><c>newtab</c> — opens <c>TargetUrl</c> in a new tab when the visitor clicks (browsers block it without a click):
 /// <c>Trigger</c> "any" = the next click anywhere, "content" = clicks on a story, a chapter or a marked action button.
@@ -59,7 +59,10 @@ public sealed partial class AdsService(IAppDbContext db, IMediaService media, IP
     private static string ProviderOf(AdUnitDto unit) => unit.Provider ?? (unit.Format == "script" || unit.Html is not null ? "custom" : "direct");
     public static bool IsUnitAllowed(AdsConfigDto config, AdUnitDto unit) => config.Enabled && unit.Enabled &&
         !(config.ProviderEnabled?.TryGetValue(ProviderOf(unit), out var enabled) == true && !enabled) &&
-        ProviderOf(unit) != "adsense" && (unit.Format != "script" || config.AllowDirectScripts && unit.ScriptApproved);
+        ProviderOf(unit) != "adsense" && (!RequiresDirectScript(unit) || config.AllowDirectScripts && unit.ScriptApproved);
+
+    private static bool RequiresDirectScript(AdUnitDto unit) => unit.Format == "script" ||
+        (unit.Format == "banner" && unit.ScriptApproved && !string.IsNullOrWhiteSpace(unit.Html) && string.IsNullOrWhiteSpace(unit.ImageUrl));
 
     public static readonly IReadOnlySet<string> Formats = new HashSet<string>(StringComparer.Ordinal) { "banner", "popup", "newtab", "script" };
 
@@ -232,7 +235,7 @@ public sealed partial class AdsService(IAppDbContext db, IMediaService media, IP
                 u.DelaySeconds,
                 u.FrequencyMinutes,
                 format == "newtab" ? u.Trigger ?? "any" : null,
-                provider, format == "script" && u.ScriptApproved));
+                provider, u.ScriptApproved && (format == "script" || (format == "banner" && hasHtml && !hasImage))));
         }
 
         v.ThrowIfInvalid();

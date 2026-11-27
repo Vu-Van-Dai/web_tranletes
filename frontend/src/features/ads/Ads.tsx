@@ -4,7 +4,9 @@ import { useQuery } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import { publicApi } from '@/services/api';
 import type { AdPage, AdSlot as AdSlotName, AdUnit } from '@/types/api';
-import { isAllowedAdUnit } from './providers';
+import { isAllowedAdUnit, isDirectBanner, requiresDirectScript } from './providers';
+import { hasVisibleCreative, loadedDirectBanners, mountDirectBanner } from './directCreative';
+import { useAuth } from '@/features/auth/AuthProvider';
 import { comicRoute, chapterRoute } from '@/app/paths';
 import { cn } from '@/utils/format';
 
@@ -53,8 +55,9 @@ function useAdEligibility() {
 }
 function useAdUnits(): AdUnit[] {
   const { enabled, group, site } = useAdEligibility();
+  const { status } = useAuth();
   // Do not mix third-party placements with AdSense auto ads in the same deployment.
-  return useMemo(() => (enabled && !adsenseClient ? (site.data?.ads?.units ?? []).filter(u => site.data && isAllowedAdUnit(site.data.ads, u) && targets(u, group)) : []), [enabled, group, site.data]);
+  return useMemo(() => (enabled && !adsenseClient ? (site.data?.ads?.units ?? []).filter(u => site.data && isAllowedAdUnit(site.data.ads, u) && targets(u, group) && (!requiresDirectScript(u) || status === 'anonymous')) : []), [enabled, group, site.data, status]);
 }
 
 // ---------------- Frequency capping (per browser; storage may be unavailable) ----------------
@@ -144,12 +147,55 @@ const AdLabel = () => <span className="text-[10px] font-medium uppercase trackin
 
 // ---------------- Inline banners ----------------
 
+/** Approved direct banner: the provider runs in the actual public document.
+ * It may create its own iframe. Never use this renderer in a signed-in session.
+ */
+function DirectBanner({ unit, slot, className }: {unit: AdUnit; slot: AdSlotName; className?: string}) {
+  const host = useRef<HTMLDivElement>(null);
+  const [empty, setEmpty] = useState(false);
+  const { pathname } = useLocation();
+  const { status } = useAuth();
+  useEffect(() => {
+    const el = host.current;
+    if (!el || !unit.html || status !== 'anonymous') return;
+    const controller = new AbortController();
+    let noFill: number | undefined;
+    // Defer execution past React StrictMode's trial mount.
+    const start = window.setTimeout(async () => {
+      if (controller.signal.aborted || (window.__rnAdPath && window.__rnAdPath !== pathname)) return;
+      const ok = await mountDirectBanner(el, unit.id, unit.html!, controller.signal, () => {
+        window.__rnAdScripts = true;
+        window.__rnAdPath = pathname;
+      });
+      if (controller.signal.aborted) return;
+      if (!ok) { setEmpty(true); return; }
+      // Cannot inspect cross-origin iframe contents or assert a counted impression.
+      noFill = window.setTimeout(() => {
+        if (!controller.signal.aborted && !hasVisibleCreative(el)) setEmpty(true);
+      }, 10000);
+    }, 0);
+    return () => {
+      controller.abort();
+      clearTimeout(start);
+      if (noFill !== undefined) clearTimeout(noFill);
+    };
+  }, [unit.id, unit.html, pathname, status]);
+  if (empty || status !== 'anonymous') return null;
+  return (
+    <aside className={cn('rounded-2xl border border-line bg-surface p-2 text-center', className)} aria-label="Quảng cáo" data-ad="" data-testid={'ad-slot-' + slot}>
+      <AdLabel />
+      <div ref={host} className="mx-auto w-full overflow-hidden" />
+    </aside>
+  );
+}
+
 /** Banner position. Several banners in one slot rotate (one random pick per mount). */
 export function AdSlot({ slot, className }: { slot: AdSlotName; className?: string }) {
   const units = useAdUnits().filter((u) => u.format === 'banner' && u.slots?.includes(slot));
   const [pick] = useState(() => Math.random());
   if (units.length === 0) return null;
   const unit = units[Math.floor(pick * units.length) % units.length]!;
+  if (isDirectBanner(unit)) return <DirectBanner key={unit.id + ':' + unit.html} unit={unit} slot={slot} className={className} />;
   return (
     <aside className={cn('rounded-2xl border border-line bg-surface p-2 text-center', className)} aria-label="Quảng cáo" data-ad="" data-testid={`ad-slot-${slot}`}>
       <AdLabel />
@@ -169,7 +215,7 @@ declare global {
 
 /** Ad-network code is injected into the page itself (popunder, social bar, auto ads need the real document). */
 function injectScriptUnit(unit: AdUnit) {
-  if (!unit.scriptApproved) return;
+  if (!unit.scriptApproved || (window.__rnAdPath && window.__rnAdPath !== window.location.pathname)) return;
   if (!unit.html || document.querySelector(`[data-rn-ad="${CSS.escape(unit.id)}"]`)) return;
   const host = document.createElement('div');
   host.dataset.rnAd = unit.id;
@@ -198,9 +244,10 @@ function injectScriptUnit(unit: AdUnit) {
  */
 export function AdNavigationBoundary() {
   const { pathname } = useLocation();
+  const { status } = useAuth();
   useLayoutEffect(() => {
-    if (window.__rnAdPath && window.__rnAdPath !== pathname) window.location.reload();
-  }, [pathname]);
+    if ((window.__rnAdPath && window.__rnAdPath !== pathname) || (window.__rnAdScripts && status !== 'anonymous')) window.location.reload();
+  }, [pathname, status]);
   return <Outlet />;
 }
 
@@ -219,7 +266,7 @@ export function AdsRuntime() {
     const injected = Array.from(document.querySelectorAll<HTMLElement>('[data-rn-ad]'));
     const hasAdsense = !!document.querySelector(`script[src^="${ADSENSE_SRC}"]`);
     if ((window.__rnAdPath && window.__rnAdPath !== pathname) ||
-        (window.__rnAdScripts && (!enabled || injected.some(el => !units.some(u => u.id === el.dataset.rnAd && u.format === 'script' && u.html === el.dataset.rnAdContent)))) ||
+        (window.__rnAdScripts && (!enabled || injected.some(el => !units.some(u => u.id === el.dataset.rnAd && u.format === 'script' && u.html === el.dataset.rnAdContent)) || loadedDirectBanners().some(([id, html]) => !units.some(u => u.id === id && isDirectBanner(u) && u.html === html)))) ||
         (hasAdsense && !adsenseAllowed)) {
       window.location.reload();
       return;

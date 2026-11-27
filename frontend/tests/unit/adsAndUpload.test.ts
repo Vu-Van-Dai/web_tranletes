@@ -1,4 +1,5 @@
-import { isAllowedAdUnit } from '@/features/ads/providers';
+import { isAllowedAdUnit, isDirectBanner, requiresDirectScript } from '@/features/ads/providers';
+import { parseDirectTag } from '@/features/ads/directCreative';
 import type { AdUnit } from '@/types/api';
 import { describe, expect, it } from 'vitest';
 import { AD_TRIGGER_SELECTOR, isAdFreePath, pageGroupOf } from '@/features/ads/Ads';
@@ -79,5 +80,24 @@ describe('ad provider controls', () => {
     expect(isAllowedAdUnit({...config,allowDirectScripts:true},script)).toBe(true);
     expect(isAllowedAdUnit({...config,allowDirectScripts:true,providerEnabled:{custom:false}},script)).toBe(false);
     expect(isAllowedAdUnit({...config,allowDirectScripts:true},{...script,scriptApproved:false})).toBe(false);
+  });
+});
+
+describe('approved direct banners', () => {
+  const banner = {id:'bn',enabled:true,format:'banner',provider:'adsterra',html:'<script async src="https://example.com/ad.js"></script><div id="container"></div>',scriptApproved:true} as AdUnit;
+  it('defaults to isolation, requires global permission for direct execution', () => {
+    expect(isDirectBanner(banner)).toBe(true);
+    expect(requiresDirectScript(banner)).toBe(true);
+    expect(isAllowedAdUnit({enabled:true,units:[banner]},banner)).toBe(false);
+    expect(isAllowedAdUnit({enabled:true,units:[banner],allowDirectScripts:true},banner)).toBe(true);
+    expect(isAllowedAdUnit({enabled:true,units:[banner],allowDirectScripts:true,providerEnabled:{adsterra:false}},banner)).toBe(false);
+    expect(isAllowedAdUnit({enabled:true,units:[banner]},{...banner,scriptApproved:false})).toBe(true);
+  });
+  it('accepts official async and sync tag shapes, rejects duplicate and non-HTTPS scripts', () => {
+    expect(parseDirectTag(banner.html!).sync).toBe(false);
+    expect(parseDirectTag('<script>atOptions={}</script><script src="https://example.com/ad.js"></script>').sync).toBe(true);
+    expect(() => parseDirectTag('<script src="http://example.com/ad.js"></script>')).toThrow();
+    expect(() => parseDirectTag('<script src="https://example.com/ad.js"></script><script src="https://example.com/ad.js"></script>')).toThrow();
+    expect(() => parseDirectTag('<div><script src="https://example.com/ad.js"></script></div>')).toThrow();
   });
 });

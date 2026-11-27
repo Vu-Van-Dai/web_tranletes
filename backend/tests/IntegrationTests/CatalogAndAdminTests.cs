@@ -335,12 +335,14 @@ public class AdsProviderTests(ApiFactory factory) : IClassFixture<ApiFactory>
             {
                 new { id = "direct", name = "Direct", enabled = true, format = "banner", provider = "direct", imageUrl = "https://example.com/ad.png", targetUrl = "https://example.com", slots = new[] { "home_top" } },
                 new { id = "disabled", name = "Disabled", enabled = true, format = "banner", provider = "adsterra", html = "<div>Ad</div>", slots = new[] { "home_top" } },
-                new { id = "script", name = "Script", enabled = true, format = "script", provider = "custom", html = "<script>void 0</script>", scriptApproved = true }
+                new { id = "script", name = "Script", enabled = true, format = "script", provider = "custom", html = "<script>void 0</script>", scriptApproved = true },
+                new { id = "direct-banner", name = "Approved banner", enabled = true, format = "banner", provider = "custom", html = "<script src=\"https://example.com/ad.js\"></script>", slots = new[] { "home_middle" }, scriptApproved = true }
             }
         };
         var saved = await admin.PutAsync("/api/admin/ads", config);
         Assert.Equal(2, saved.Int("schemaVersion"));
         Assert.Single(saved.GetProperty("reports").EnumerateArray());
+        Assert.True(saved.GetProperty("units")[3].GetProperty("scriptApproved").GetBoolean());
         var site = (await anon.GetAsync("/api/site")).GetProperty("ads");
         Assert.Single(site.GetProperty("units").EnumerateArray());
         Assert.Equal("direct", site.GetProperty("units")[0].Str("id"));

@@ -135,7 +135,7 @@ export function AdminAdsPage() {
                 <li key={u.id} className="card flex flex-wrap items-center gap-3 p-4">
                   {u.imageUrl ? <img src={u.imageUrl} alt="" className="h-12 w-20 shrink-0 rounded-lg object-cover" /> : <span className="grid h-12 w-20 shrink-0 place-items-center rounded-lg bg-surface-2 text-xs text-muted">{u.html ? 'HTML' : '—'}</span>}
                   <div className="min-w-0 flex-1">
-                    <p className="flex flex-wrap items-center gap-2 font-medium">{u.name}<Badge tone="accent">{formatLabel[u.format]}</Badge><Badge>{providerLabels[providerOf(u)]}</Badge>{!u.enabled && <Badge>Đang tắt</Badge>}</p>
+                    <p className="flex flex-wrap items-center gap-2 font-medium">{u.name}<Badge tone="accent">{formatLabel[u.format]}</Badge><Badge>{providerLabels[providerOf(u)]}</Badge>{u.format === 'banner' && u.scriptApproved && <Badge>Script trực tiếp</Badge>}{!u.enabled && <Badge>Đang tắt</Badge>}</p>
                     <p className="truncate text-xs text-muted">{describe(u)}</p>
                   </div>
                   <Checkbox label="Bật" checked={u.enabled} onChange={(e) => upsert({ ...u, enabled: e.target.checked })} />
@@ -149,7 +149,7 @@ export function AdminAdsPage() {
           <section className="card space-y-2 p-5 text-sm leading-relaxed text-muted">
             <h2 className="font-semibold text-ink">Gợi ý</h2>
             <p>• <strong className="text-ink">Mạng quảng cáo popunder / social bar</strong> (Adsterra, Monetag, PropellerAds…): tạo một quảng cáo loại “Mã của mạng quảng cáo” và dán mã họ cung cấp.</p>
-            <p>• <strong className="text-ink">Banner của mạng quảng cáo</strong>: loại “Banner trong trang”, dán mã HTML — mã chạy trong khung cách ly nên không đọc được phiên đăng nhập của người dùng.</p>
+            <p>• <strong className="text-ink">Banner của mạng quảng cáo</strong>: loại “Banner trong trang”, dán mã HTML — mặc định chạy trong khung cách ly. Chỉ chọn chạy trực tiếp nếu đã kiểm tra nhà cung cấp; dùng JSAsync nếu mã đồng bộ không tương thích.</p>
             <p>• <strong className="text-ink">Google AdSense</strong>: dùng cấu hình triển khai PUBLIC_ADSENSE_AUTO_ADS=true nếu đã được duyệt; không dán Auto ads vào loại mã mạng quảng cáo. Không chạy chung với quảng cáo pop-up/popunder.</p>
             <p>• Ảnh tải lên được nén sang WebP. Quá nhiều pop-up có thể làm người đọc rời đi — nên đặt tần suất (ví dụ 1 lần / 30 phút).</p>
           </section>
@@ -191,7 +191,7 @@ function AdEditor({ unit, providerSettings, onCancel, onSave }: { unit: AdUnit; 
     const clean: AdUnit = {
       ...u,
       name: u.name.trim(),
-      scriptApproved: u.format === 'script' && u.scriptApproved === true,
+      scriptApproved: (u.format === 'script' || (u.format === 'banner' && creative === 'html')) && u.scriptApproved === true,
       imageUrl: hasCreative && creative === 'image' ? u.imageUrl : null,
       html: (hasCreative && creative === 'html') || u.format === 'script' ? u.html : null,
       targetUrl: (hasCreative && creative === 'image') || u.format === 'newtab' ? u.targetUrl : null,
@@ -220,7 +220,7 @@ function AdEditor({ unit, providerSettings, onCancel, onSave }: { unit: AdUnit; 
         {hasCreative && (
           <div className="space-y-3">
             <div className="flex gap-4 text-sm">
-              <label className="flex items-center gap-2"><input type="radio" checked={creative === 'image'} onChange={() => setCreative('image')} /> Ảnh + liên kết</label>
+              <label className="flex items-center gap-2"><input type="radio" checked={creative === 'image'} onChange={() => { setCreative('image'); set({scriptApproved:false}); }} /> Ảnh + liên kết</label>
               <label className="flex items-center gap-2"><input type="radio" checked={creative === 'html'} onChange={() => setCreative('html')} /> Mã HTML</label>
             </div>
             {creative === 'image' ? (
@@ -241,11 +241,17 @@ function AdEditor({ unit, providerSettings, onCancel, onSave }: { unit: AdUnit; 
                 </div>
               </div>
             ) : (
-              <Field label="Mã HTML của quảng cáo" hint="Chạy trong khung cách ly (iframe sandbox).">
+              <Field label="Mã HTML của quảng cáo" hint={u.format === 'banner' && u.scriptApproved ? 'Chạy trực tiếp trong tài liệu công khai, chỉ với khách chưa đăng nhập.' : 'Chạy trong khung cách ly (iframe sandbox).'}>
                 {(id) => <Textarea id={id} rows={6} className="font-mono text-xs" value={u.html ?? ''} onChange={(e) => set({ html: e.target.value || null, scriptApproved: false })} />}
               </Field>
             )}
           </div>
+        )}
+
+        {providerSettings && u.format === 'banner' && creative === 'html' && (
+          <Checkbox label="Chạy trực tiếp mã banner (không dùng iframe của Rồng Nhỏ)"
+            description="Chỉ dùng mã chính thức đã kiểm tra và danh mục quảng cáo hợp pháp. Script có quyền của trang web; chỉ chạy với khách chưa đăng nhập, cần bật quyền script toàn hệ thống. Bỏ chọn để quay về iframe cách ly. Ưu tiên mã JSAsync; mỗi trang chỉ thử một banner đồng bộ."
+            checked={u.scriptApproved === true} onChange={e => set({scriptApproved:e.target.checked})} data-testid="ad-direct-banner" />
         )}
 
         {u.format === 'newtab' && (
@@ -325,7 +331,7 @@ function ProviderSettings({ config, update }: { config: AdsConfig; update: (next
       <h2 className="font-semibold">Nhà cung cấp quảng cáo</h2>
       <p className="text-sm text-muted">Bật/tắt từng nhà cung cấp. Không có mạng quảng cáo nào được đăng ký tự động. Chỉ sử dụng nội dung hợp pháp, phù hợp mọi lứa tuổi; kiểm soát danh mục trong dashboard của nhà cung cấp.</p>
       <div className="grid gap-3 sm:grid-cols-2">{Object.entries(providerLabels).map(([p,label]) => <Checkbox key={p} label={label} checked={config.providerEnabled?.[p as AdProvider] !== false} onChange={e => update({...config,providerEnabled:{...config.providerEnabled,[p]:e.target.checked}})} />)}</div>
-      <Checkbox label="Cho phép script bên thứ ba chạy trực tiếp" description="Mặc định tắt. Chỉ script đã được phê duyệt riêng mới được chạy; không dùng nếu banner iframe đáp ứng được yêu cầu." checked={config.allowDirectScripts === true} onChange={e => update({...config,allowDirectScripts:e.target.checked})} />
+      <Checkbox label="Cho phép script bên thứ ba chạy trực tiếp" description="Mặc định tắt. Chỉ script và banner trực tiếp đã phê duyệt riêng mới được chạy, chỉ với khách chưa đăng nhập." checked={config.allowDirectScripts === true} onChange={e => update({...config,allowDirectScripts:e.target.checked})} />
     </section>
     <section className="card space-y-3 p-4">
       <h2 className="font-semibold">Đối soát doanh thu theo nhà cung cấp</h2>
