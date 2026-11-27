@@ -46,8 +46,16 @@ public class PublicCatalogTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var slug = detail.Str("slug");
         var friendlyComic = $"/api/comics/by-slug/meo-dich-truyen/{slug}";
         var friendlyChapter = $"/api/chapters/by-slug/meo-dich-truyen/{slug}/1";
-        Assert.Equal(comicId, (await anon.GetAsync(friendlyComic)).Id());
-        Assert.Equal(ch1, (await anon.GetAsync(friendlyChapter)).Id());
+        Assert.Equal($"/truyen/meo-dich-truyen/{slug}", detail.Str("publicPath"));
+        var friendlyDetail = await anon.GetAsync(friendlyComic);
+        var friendlySummary = await anon.GetAsync(friendlyChapter);
+        Assert.Equal(comicId, friendlyDetail.Id());
+        Assert.Equal(ch1, friendlySummary.Id());
+        Assert.Equal($"/doc/meo-dich-truyen/{slug}/chuong-1", friendlySummary.Str("publicPath"));
+        // Friendly lookup resolves exactly the existing UUID; package URL and checksum remain identical.
+        var legacyReader = await anon.GetAsync($"/api/chapters/{ch1}/reader");
+        var resolvedReader = await anon.GetAsync($"/api/chapters/{friendlySummary.Id()}/reader");
+        Assert.Equal(legacyReader.GetProperty("package").GetRawText(), resolvedReader.GetProperty("package").GetRawText());
         await anon.ProblemAsync(HttpMethod.Get, friendlyChapter + ".5", null, HttpStatusCode.NotFound);
         await anon.ProblemAsync(HttpMethod.Get, $"/api/comics/by-slug/khong-ton-tai/{slug}", null, HttpStatusCode.NotFound);
         var sitemap = await anon.Http.GetStringAsync("/sitemap.xml");
