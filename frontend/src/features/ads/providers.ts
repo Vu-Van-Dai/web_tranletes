@@ -8,9 +8,15 @@ export const providerLabels: Record<AdProvider, string> = {
 export function providerOf(unit: AdUnit): AdProvider {
   return unit.provider ?? (unit.format === 'script' || unit.html ? 'custom' : 'direct');
 }
+export function isDirectBanner(unit: AdUnit): boolean {
+  return unit.format === 'banner' && !!unit.html && !unit.imageUrl && unit.scriptApproved === true;
+}
+export function requiresDirectScript(unit: AdUnit): boolean {
+  return unit.format === 'script' || isDirectBanner(unit);
+}
 export function isAllowedAdUnit(config: AdsConfig, unit: AdUnit): boolean {
   const provider = providerOf(unit);
   return config.enabled && unit.enabled && provider !== 'adsense' &&
     config.providerEnabled?.[provider] !== false &&
-    (unit.format !== 'script' || (config.allowDirectScripts === true && unit.scriptApproved === true));
+    (!requiresDirectScript(unit) || (config.allowDirectScripts === true && unit.scriptApproved === true));
 }
