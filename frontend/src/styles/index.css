@@ -171,3 +171,6 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Remove vertical ad spacing after a slot has no eligible or visible creative. */
+[data-ad-slot-wrapper]:empty { margin-block: 0 !important; padding-block: 0 !important; }

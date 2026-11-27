@@ -175,6 +175,8 @@ export function PublicLayout() {
         <Outlet />
         <AdSlot slot="site_bottom" className="container-page mt-10" />
       </main>
+      <div className="fixed left-2 top-24 z-10 hidden w-[180px] min-[1700px]:block" aria-label="Vị trí quảng cáo bên trái"><AdSlot slot="side_left" /></div>
+      <div className="fixed right-2 top-24 z-10 hidden w-[180px] min-[1700px]:block" aria-label="Vị trí quảng cáo bên phải"><AdSlot slot="side_right" /></div>
       <AdsRuntime />
 
       <footer className="mt-12 border-t border-line bg-surface py-8 pb-24 text-sm text-muted md:pb-8">

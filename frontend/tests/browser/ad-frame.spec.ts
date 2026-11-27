@@ -26,7 +26,7 @@ test('sandboxed banner executes sync scripts and eval without access to the pare
   await expect(frame.locator('#written')).toHaveText('sync');
   await expect(frame.locator('body')).toHaveAttribute('data-escape','blocked');
   expect(await page.evaluate('window.parentEvalBlocked')).toBe(true);
-  await expect.poll(() => page.evaluate('window.messages.some(m=>m.type==="rn-ad-size"&&m.id==="test-1"&&m.h>=250)')).toBe(true);
+  await expect.poll(() => page.evaluate('window.messages.some(m=>m.type==="rn-ad-size"&&m.id==="test-1"&&m.h>=250&&m.visible===true)')).toBe(true);
 });
 
 test('opening the sandbox directly never accepts an ad payload', async ({ page }) => {

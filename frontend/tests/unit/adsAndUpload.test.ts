@@ -101,3 +101,26 @@ describe('approved direct banners', () => {
     expect(() => parseDirectTag('<div><script src="https://example.com/ad.js"></script></div>')).toThrow();
   });
 });
+
+import { dimensions, fitsSlot, weightedPick, standaloneLink, suggestedAdsterraLayout } from '@/features/ads/placement';
+describe('responsive ad slots',()=>{
+  const wide={id:'wide',name:'Banner 728x90',format:'banner',provider:'adsterra',enabled:true,scriptApproved:false,html:"<script>atOptions={'width':728,'height':90}</script>",slots:['home_top']} as AdUnit;
+  it('reads fixed dimensions and preserves approval while assigning a desktop slot',()=>{
+    expect(dimensions(wide)).toEqual({width:728,height:90});
+    const result=suggestedAdsterraLayout(wide);
+    expect(result.slots).toEqual(['site_top']);
+    expect(result.scriptApproved).toBe(false);
+    expect(fitsSlot(result,'site_top',340,390)).toBe(false);
+    expect(fitsSlot(result,'site_top',1000,1280)).toBe(true);
+  });
+  it('requires enough space for side rails',()=>{
+    const rail={...wide,width:160,height:600,slots:['side_left']} as AdUnit;
+    expect(fitsSlot(rail,'side_left',162,1600)).toBe(false);
+    expect(fitsSlot(rail,'side_left',162,1700)).toBe(true);
+  });
+  it('rotates by relative weight and recognizes only an explicit safe link',()=>{
+    expect(weightedPick([{id:'a',weight:1},{id:'b',weight:3}],0.5)?.id).toBe('b');
+    expect(standaloneLink('<a href="https://example.com">Ad</a>')?.label).toBe('Ad');
+    expect(standaloneLink('<a href="https://example.com" onclick="alert(1)">Ad</a>')).toBeNull();
+  });
+});

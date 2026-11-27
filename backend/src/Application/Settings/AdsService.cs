@@ -37,7 +37,12 @@ public sealed record AdUnitDto(
     int? FrequencyMinutes,
     string? Trigger = null,
     string? Provider = null,
-    bool ScriptApproved = false);
+    bool ScriptApproved = false,
+    string? Device = null,
+    int? Width = null,
+    int? Height = null,
+    int? Weight = null,
+    string? PlacementId = null);
 
 public sealed record AdProviderReport(string Provider, string Month, string Currency, long Impressions, decimal Revenue);
 
@@ -69,7 +74,7 @@ public sealed partial class AdsService(IAppDbContext db, IMediaService media, IP
     /// <summary>Inline banner positions rendered by the web app.</summary>
     public static readonly IReadOnlySet<string> Slots = new HashSet<string>(StringComparer.Ordinal)
     {
-        "site_top", "site_bottom", "home_top", "home_middle", "browse_top", "comic_top", "comic_chapters", "house_top", "reader_top", "reader_bottom",
+        "site_top", "site_bottom", "home_top", "home_middle", "browse_top", "comic_top", "comic_chapters", "house_top", "reader_top", "reader_bottom", "home_extra", "side_left", "side_right",
     };
 
     /// <summary>Public page groups a popup / new-tab / script ad can target (empty list = every public page).</summary>
@@ -220,6 +225,10 @@ public sealed partial class AdsService(IAppDbContext db, IMediaService media, IP
             v.Must(u.DelaySeconds is null or >= 0 and <= 300, f + ".delaySeconds", "Độ trễ phải từ 0 đến 300 giây.");
             v.Must(u.FrequencyMinutes is null or >= 0 and <= 10_080, f + ".frequencyMinutes", "Tần suất phải từ 0 đến 10080 phút (7 ngày).");
 
+            v.Must(u.Device is null or "all" or "desktop" or "mobile", f + ".device", "Thiết bị không hợp lệ.");
+            v.Must((u.Width is null && u.Height is null) || (u.Width is >= 1 and <= 2000 && u.Height is >= 1 and <= 1200), f + ".width", "Cần cả chiều rộng và chiều cao hợp lệ.");
+            v.Must(u.Weight is null or >= 1 and <= 100, f + ".weight", "Trọng số từ 1 đến 100.");
+            v.MaxLength(f + ".placementId", u.PlacementId, "Placement ID", 80);
             result.Add(new AdUnitDto(
                 u.Id ?? "",
                 u.Name?.Trim() ?? "",
@@ -235,7 +244,8 @@ public sealed partial class AdsService(IAppDbContext db, IMediaService media, IP
                 u.DelaySeconds,
                 u.FrequencyMinutes,
                 format == "newtab" ? u.Trigger ?? "any" : null,
-                provider, u.ScriptApproved && (format == "script" || (format == "banner" && hasHtml && !hasImage))));
+                provider, u.ScriptApproved && (format == "script" || (format == "banner" && hasHtml && !hasImage)),
+                u.Device, u.Width, u.Height, u.Weight, Clean(u.PlacementId)));
         }
 
         v.ThrowIfInvalid();
