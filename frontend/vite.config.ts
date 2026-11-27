@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { adFrameDev } from './edge/adFrameDev';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
@@ -46,7 +47,7 @@ function adsense(client: string): Plugin {
 const adsenseClient = (mode: string) => loadEnv(mode, '..', 'PUBLIC_').PUBLIC_ADSENSE_CLIENT ?? process.env.PUBLIC_ADSENSE_CLIENT ?? 'ca-pub-9474823258875185';
 
 export default defineConfig(({ mode }) => ({
-  plugins: [react(), tailwindcss(), adsense(adsenseClient(mode))],
+  plugins: [react(), tailwindcss(), adFrameDev(), adsense(adsenseClient(mode))],
   // Auto ads are disabled by default. Ownership verification does not require loading ad code.
   define: { __ADSENSE_CLIENT__: JSON.stringify(mode === 'production' && (loadEnv(mode, '..', 'PUBLIC_').PUBLIC_ADSENSE_AUTO_ADS ?? process.env.PUBLIC_ADSENSE_AUTO_ADS) === 'true' ? adsenseClient(mode) : '') },
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
