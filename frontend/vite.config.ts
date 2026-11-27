@@ -15,7 +15,7 @@ const proxy = {
 const ADSENSE_START = '<!-- adsense:start -->';
 const ADSENSE_END = '<!-- adsense:end -->';
 
-/** AdSense ownership is verified with a meta tag, without loading ad scripts during build.
+/** Publisher ownership is verified with meta tags, without loading ad scripts during build.
  * Auto ads are opt-in and runtime gated by public site configuration. The workspace remains ad-free. */
 function adsense(client: string): Plugin {
   let outDir = 'dist';
@@ -26,9 +26,12 @@ function adsense(client: string): Plugin {
       outDir = config.build.outDir;
     },
     transformIndexHtml(html) {
-      if (!client) return html;
-      const tag = `<meta name="google-adsense-account" content="${client}">`;
-      return html.replace('</head>', `    ${ADSENSE_START}\n    ${tag}\n    ${ADSENSE_END}\n  </head>`);
+      // Ownership tags only; never load third-party advertising scripts here.
+      const tags = [
+        ...(client ? [`<meta name="google-adsense-account" content="${client}">`] : []),
+        '<meta name="clckd" content="3b2aefb1d9c09ae742409df61ad0bed7" />',
+      ];
+      return html.replace('</head>', `    ${ADSENSE_START}\n    ${tags.join("\n    ")}\n    ${ADSENSE_END}\n  </head>`);
     },
     closeBundle() {
       const index = readFileSync(`${outDir}/index.html`, 'utf8');
