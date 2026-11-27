@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "include": [
+    "/",
+    "/truyen",
+    "/truyen/*",
+    "/doc/*",
+    "/the-loai/*",
+    "/nhom-dich",
+    "/nhom-dich/*",
+    "/gioi-thieu",
+    "/chinh-sach-bao-mat",
+    "/lien-he",
+    "/dieu-khoan-su-dung",
+    "/faq",
+    "/tim-kiem",
+    "/dang-nhap",
+    "/dang-ky",
+    "/doi-mat-khau",
+    "/tu-truyen",
+    "/sitemap.xml",
+    "/quan-tri",
+    "/quan-tri/*",
+    "/quan-ly-nhom",
+    "/quan-ly-nhom/*"
+  ],
+  "exclude": []
+}

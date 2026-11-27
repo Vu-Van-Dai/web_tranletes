@@ -119,7 +119,7 @@ export function AdminAdsPage() {
       {!config ? <Skeleton className="h-48 rounded-2xl" /> : (
         <div className="space-y-4">
           <div className="card p-4">
-            <Checkbox label="Bật quảng cáo trên toàn trang" description="Tắt để ẩn mọi quảng cáo ngay lập tức mà không xoá cấu hình."
+            <Checkbox label="Bật quảng cáo trên toàn trang" description="Tắt quảng cáo khi cấu hình mới được đồng bộ (tối đa khoảng 60 giây với trang đang mở), không xoá cấu hình."
               checked={config.enabled} onChange={(e) => update({ ...config, enabled: e.target.checked })} data-testid="ads-enabled" />
           </div>
           {config.units.length === 0 ? (
@@ -145,7 +145,7 @@ export function AdminAdsPage() {
             <h2 className="font-semibold text-ink">Gợi ý</h2>
             <p>• <strong className="text-ink">Mạng quảng cáo popunder / social bar</strong> (Adsterra, Monetag, PropellerAds…): tạo một quảng cáo loại “Mã của mạng quảng cáo” và dán mã họ cung cấp.</p>
             <p>• <strong className="text-ink">Banner của mạng quảng cáo</strong>: loại “Banner trong trang”, dán mã HTML — mã chạy trong khung cách ly nên không đọc được phiên đăng nhập của người dùng.</p>
-            <p>• <strong className="text-ink">Google AdSense</strong>: không cho phép pop-up/popunder và không chạy trong khung cách ly; dùng loại “Mã của mạng quảng cáo” cho đoạn mã Auto ads và đọc kỹ chính sách nội dung của Google.</p>
+            <p>• <strong className="text-ink">Google AdSense</strong>: dùng cấu hình triển khai PUBLIC_ADSENSE_AUTO_ADS=true nếu đã được duyệt; không dán Auto ads vào loại mã mạng quảng cáo. Không chạy chung với quảng cáo pop-up/popunder.</p>
             <p>• Ảnh tải lên được nén sang WebP. Quá nhiều pop-up có thể làm người đọc rời đi — nên đặt tần suất (ví dụ 1 lần / 30 phút).</p>
           </section>
         </div>

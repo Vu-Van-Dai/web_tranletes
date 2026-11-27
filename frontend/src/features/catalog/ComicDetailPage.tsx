@@ -22,7 +22,13 @@ export function ComicDetailPage() {
   const state = useQuery({ queryKey: ['library-state', id], queryFn: () => libraryApi.state(id), enabled: status === 'authenticated' });
   const [filter, setFilter] = useState('');
   const [expanded, setExpanded] = useState(false);
-  useDocumentTitle(comic.data?.translatedTitle);
+  useDocumentTitle(comic.data?.translatedTitle, {
+    description: comic.data?.description,
+    canonical: comic.data ? paths.comic(comic.data.id, comic.data.slug) : undefined,
+    image: comic.data?.coverUrl,
+    mature: comic.data?.isMature,
+    noindex: comic.isError,
+  });
 
   const follow = useMutation({
     mutationFn: (following: boolean) => (following ? libraryApi.unfollow(id) : libraryApi.follow(id)),

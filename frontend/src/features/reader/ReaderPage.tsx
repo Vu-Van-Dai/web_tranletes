@@ -37,7 +37,11 @@ export function ReaderPage() {
   const { chapterId = '' } = useParams();
   const reader = useQuery({ queryKey: ['reader', chapterId], queryFn: ({ signal }) => publicApi.reader(chapterId, signal), staleTime: 30_000, retry: 1 });
   const data = reader.data;
-  useDocumentTitle(data ? `${data.chapter.comicTitle} – ${chapterLabel(data.chapter.number)}` : 'Đọc truyện');
+  useDocumentTitle(data ? `${data.chapter.comicTitle} – ${chapterLabel(data.chapter.number, data.chapter.title)}` : 'Đọc truyện', {
+    canonical: data ? paths.read(data.chapter.id) : undefined,
+    mature: data?.chapter.isMature,
+    noindex: reader.isError || data?.chapter.isMature,
+  });
 
   if (reader.isError) {
     return (
