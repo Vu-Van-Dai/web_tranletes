@@ -124,3 +124,25 @@ describe('responsive ad slots',()=>{
     expect(standaloneLink('<a href="https://example.com" onclick="alert(1)">Ad</a>')).toBeNull();
   });
 });
+
+import { directTagKind } from '@/features/ads/directCreative';
+import { adKind, suggestedPopunderTest, imageFallback } from '@/features/ads/placement';
+describe('network ad compatibility',()=>{
+  it('allows independent async option queues while keeping sync/global configs conservative',()=>{
+    expect(directTagKind('<script>atAsyncOptions.push({key:"a"})</script><script async src="//example.com/a.js"></script><div id="a"></div>')).toBe('async');
+    expect(directTagKind('<script>atOptions={}</script><script async src="https://example.com/a.js"></script>')).toBe('sync');
+    expect(directTagKind('<script src="http://example.com/a.js"></script>')).toBe('invalid');
+  });
+  it('prepares a popunder test without approving or enabling code',()=>{
+    const pop={id:'pop',name:'Adsterra - Popunder',provider:'adsterra',format:'script',enabled:false,scriptApproved:false} as AdUnit;
+    expect(adKind(pop)).toBe('popunder');
+    expect(suggestedPopunderTest(pop)).toMatchObject({enabled:false,scriptApproved:false,pages:['home','comic','reader'],frequencyMinutes:30});
+    expect(suggestedPopunderTest({...pop,name:'Adsterra - Smartlink',format:'banner',enabled:true}).enabled).toBe(false);
+  });
+  it('does not request another paid network as a fallback',()=>{
+    const ad={id:'first',provider:'adsterra',html:'<script></script>'} as AdUnit;
+    const own={id:'own',provider:'direct',imageUrl:'https://example.com/a.webp',targetUrl:'https://example.com',html:null} as AdUnit;
+    expect(imageFallback([ad],ad.id,0)).toBeUndefined();
+    expect(imageFallback([ad,own],ad.id,0)?.id).toBe('own');
+  });
+});

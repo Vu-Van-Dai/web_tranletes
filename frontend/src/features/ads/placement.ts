@@ -25,7 +25,30 @@ export function standaloneLink(html:string|null):{href:string;label:string}|null
   if([...a.attributes].some(x=>!['href','target','rel','title','class'].includes(x.name)))return null;
   return {href:a.href,label:a.textContent?.trim()||'Xem quảng cáo'};
 }
-type State='loading'|'element'|'no-element'|'script-error'|'injected';
+export type AdDiagnosticState='loading'|'element'|'no-element'|'script-error'|'injected'|'invalid-tag'|'duplicate'|'sync-limit'|'fallback';
+type State=AdDiagnosticState;
+export const diagnosticLabel:Record<State,string> = {
+  loading:'Đang nạp',element:'Có phần tử quảng cáo (chưa xác nhận impression)', 'no-element':'Không phát hiện nội dung', 'script-error':'Lỗi tải script',injected:'Đã nạp mã mạng', 'invalid-tag':'Tag không tương thích',duplicate:'Trùng mã hoặc container', 'sync-limit':'Đã có banner đồng bộ trong tài liệu',fallback:'Đang dùng ảnh dự phòng'
+};
+export function adKind(u:AdUnit): 'popunder'|'socialbar'|'smartlink'|'other' {
+  if(u.provider!=='adsterra')return 'other';
+  if(/popunder/i.test(u.name))return 'popunder';
+  if(/social\s*bar/i.test(u.name))return 'socialbar';
+  if(/smartlink/i.test(u.name))return 'smartlink';
+  return 'other';
+}
+// Draft only: don't approve or enable a third-party script automatically.
+export function suggestedPopunderTest(u:AdUnit):AdUnit {
+  const kind=adKind(u);
+  if(kind==='smartlink'||kind==='socialbar')return {...u,enabled:false};
+  if(kind==='popunder'&&u.format==='script')return {...u,pages:['home','comic','reader'],delaySeconds:0,frequencyMinutes:30};
+  return u;
+}
+// A fallback must already be configured in this slot and be a direct image creative,
+// not another paid network request. Never retry a failed script to generate impressions.
+export function imageFallback(units:AdUnit[],failedId:string,seed:number):AdUnit|undefined {
+  return weightedPick(units.filter(u=>u.id!==failedId&&u.provider==='direct'&&!!u.imageUrl&&!!u.targetUrl&&!u.html),seed);
+}
 export type AdDiagnostic={state:State;at:number;slot:string};
 const KEY='rn_ad_diagnostics_v1';
 export function readDiagnostics():Record<string,AdDiagnostic>{

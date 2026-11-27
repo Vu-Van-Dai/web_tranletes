@@ -7,7 +7,7 @@ import type { AdPage, AdSlot as AdSlotName, AdUnit } from '@/types/api';
 import { isAllowedAdUnit, isDirectBanner, requiresDirectScript } from './providers';
 import { hasVisibleCreative, loadedDirectBanners, mountDirectBanner } from './directCreative';
 import { useAuth } from '@/features/auth/AuthProvider';
-import { dimensions, fitsSlot, weightedPick, standaloneLink, noteAd } from './placement';
+import { dimensions, fitsSlot, weightedPick, standaloneLink, noteAd, imageFallback } from './placement';
 import { comicRoute, chapterRoute } from '@/app/paths';
 import { cn } from '@/utils/format';
 
@@ -160,7 +160,7 @@ const AdLabel = () => <span className="text-[10px] font-medium uppercase trackin
 /** Approved direct banner: the provider runs in the actual public document.
  * It may create its own iframe. Never use this renderer in a signed-in session.
  */
-function DirectBanner({ unit, slot, className }: {unit: AdUnit; slot: AdSlotName; className?: string}) {
+function DirectBanner({ unit, slot, className, onFailure }: {unit: AdUnit; slot: AdSlotName; className?: string; onFailure?:()=>void}) {
   const host = useRef<HTMLDivElement>(null);
   const [empty, setEmpty] = useState(false);
   const { pathname } = useLocation();
@@ -174,16 +174,17 @@ function DirectBanner({ unit, slot, className }: {unit: AdUnit; slot: AdSlotName
     const start = window.setTimeout(async () => {
       if (controller.signal.aborted || (window.__rnAdPath && window.__rnAdPath !== pathname)) return;
       noteAd(unit.id,slot,'loading');
+      let failure: import('./directCreative').DirectFailure = 'script-error';
       const ok = await mountDirectBanner(el, unit.id, unit.html!, controller.signal, () => {
         window.__rnAdScripts = true;
         window.__rnAdPath = pathname;
-      });
+      }, reason => {failure=reason;});
       if (controller.signal.aborted) return;
-      if (!ok) { noteAd(unit.id,slot,'script-error'); setEmpty(true); return; }
+      if (!ok) { noteAd(unit.id,slot,failure==='cancelled'?'script-error':failure); setEmpty(true);onFailure?.();return; }
       // Cannot inspect cross-origin iframe contents or assert a counted impression.
       noFill = window.setTimeout(() => {
         if(controller.signal.aborted)return;
-        const visible=hasVisibleCreative(el);noteAd(unit.id,slot,visible?'element':'no-element');if(!visible)setEmpty(true);
+        const visible=hasVisibleCreative(el);noteAd(unit.id,slot,visible?'element':'no-element');if(!visible){setEmpty(true);onFailure?.();}
       }, 10000);
     }, 0);
     return () => {
@@ -201,11 +202,11 @@ function DirectBanner({ unit, slot, className }: {unit: AdUnit; slot: AdSlotName
   );
 }
 
-function IsolatedBanner({unit,slot}:{unit:AdUnit;slot:AdSlotName}){
+function IsolatedBanner({unit,slot,onFailure}:{unit:AdUnit;slot:AdSlotName;onFailure?:()=>void}){
   const [empty,setEmpty]=useState(false);
   if(empty)return null;
   return <aside className="rounded-2xl border border-line bg-surface p-2 text-center" aria-label="Quảng cáo" data-ad="" data-testid={'ad-slot-'+slot}>
-    <AdLabel/><div className="mx-auto w-full overflow-hidden" style={{maxWidth:dimensions(unit)?.width}}><Creative unit={unit} onState={visible=>{noteAd(unit.id,slot,visible?'element':'no-element');if(!visible)setEmpty(true);}}/></div>
+    <AdLabel/><div className="mx-auto w-full overflow-hidden" style={{maxWidth:dimensions(unit)?.width}}><Creative unit={unit} onState={visible=>{noteAd(unit.id,slot,visible?'element':'no-element');if(!visible){setEmpty(true);onFailure?.();}}}/></div>
   </aside>;
 }
 /** One weighted choice per slot; independent slots can coexist. */
@@ -214,6 +215,7 @@ export function AdSlot({slot,className}:{slot:AdSlotName;className?:string}){
   const host=useRef<HTMLDivElement>(null);
   const [size,setSize]=useState({width:0,viewport:0});
   const [pick]=useState(()=>Math.random());
+  const [failed,setFailed]=useState<string|null>(null);
   useLayoutEffect(()=>{
     const el=host.current;if(!el)return;
     const measure=()=>{const style=getComputedStyle(el);const next={width:Math.max(0,el.clientWidth-parseFloat(style.paddingLeft||'0')-parseFloat(style.paddingRight||'0')-18),viewport:window.innerWidth};setSize(old=>old.width===next.width&&old.viewport===next.viewport?old:next);};
@@ -221,10 +223,14 @@ export function AdSlot({slot,className}:{slot:AdSlotName;className?:string}){
     return ()=>{observer.disconnect();window.removeEventListener('resize',measure);};
   },[]);
   const eligible=units.filter(u=>fitsSlot(u,slot,size.width,size.viewport));
-  const unit=weightedPick(eligible,pick);
+  const primary=weightedPick(eligible,pick);
+  const failedPrimary=primary && failed===primary.id+':'+primary.html;
+  const unit=failedPrimary?imageFallback(eligible,primary.id,pick):primary;
+  const fail=()=>{if(primary&&!failedPrimary)setFailed(primary.id+':'+primary.html);};
+  useEffect(()=>{if(failedPrimary&&unit)noteAd(unit.id,slot,'fallback');},[failedPrimary,unit,slot]);
   return <div ref={host} data-ad-slot-wrapper="" className={cn('w-full min-w-0',className)}>
-    {unit&&(isDirectBanner(unit)?<DirectBanner key={unit.id+':'+unit.html} unit={unit} slot={slot}/>: (
-      <IsolatedBanner key={unit.id+':'+unit.html} unit={unit} slot={slot}/>))}
+    {unit&&(isDirectBanner(unit)?<DirectBanner key={unit.id+':'+unit.html} unit={unit} slot={slot} onFailure={fail}/>: (
+      <IsolatedBanner key={unit.id+':'+unit.html} unit={unit} slot={slot} onFailure={fail}/>))}
   </div>;
 }
 
@@ -238,9 +244,9 @@ declare global {
 }
 
 /** Ad-network code is injected into the page itself (popunder, social bar, auto ads need the real document). */
-function injectScriptUnit(unit: AdUnit) {
-  if (!unit.scriptApproved || (window.__rnAdPath && window.__rnAdPath !== window.location.pathname)) return;
-  if (!unit.html || document.querySelector(`[data-rn-ad="${CSS.escape(unit.id)}"]`)) return;
+function injectScriptUnit(unit: AdUnit):boolean {
+  if (!unit.scriptApproved || (window.__rnAdPath && window.__rnAdPath !== window.location.pathname)) return false;
+  if (!unit.html || document.querySelector(`[data-rn-ad="${CSS.escape(unit.id)}"]`)) return false;
   const host = document.createElement('div');
   host.dataset.rnAd = unit.id;
   host.dataset.rnAdContent = unit.html;
@@ -261,7 +267,13 @@ function injectScriptUnit(unit: AdUnit) {
   window.__rnAdScripts = true;
   window.__rnAdPath = window.location.pathname;
   noteAd(unit.id,'network','injected');
+  return true;
 }
+
+const NETWORK_UNTIL='rn_ad_network_until';
+let networkUntil=0;
+function networkDue(){try{return Date.now()>=Math.max(networkUntil,Number(localStorage.getItem(NETWORK_UNTIL))||0);}catch{return Date.now()>=networkUntil;}}
+function recordNetwork(unit:AdUnit){networkUntil=Date.now()+Math.max(1,unit.frequencyMinutes??30)*60_000;try{localStorage.setItem(NETWORK_UNTIL,String(networkUntil));}catch{/* optional */}}
 
 /**
  * Mounted once per public page shell (public layout and reader). Shows at most one pop-up at a time,
@@ -299,12 +311,12 @@ export function AdsRuntime() {
     }
     if (!enabled) return;
     // Cap injection, not the vendor's actual popup count or paid impressions.
-    if(injected.length)return;
+    if(injected.length||!networkDue())return;
     const candidate=weightedPick(units.filter(u=>u.format==='script'&&targets(u,group)&&isDue(u,pathname)),networkPick);
     if(!candidate)return;
     const timer=window.setTimeout(()=>{
-      if(document.querySelector('[data-rn-ad]')||!isDue(candidate,pathname))return;
-      recordShown(candidate,pathname);injectScriptUnit(candidate);
+      if(document.querySelector('[data-rn-ad]')||!isDue(candidate,pathname)||!networkDue())return;
+      if(injectScriptUnit(candidate)){recordShown(candidate,pathname);recordNetwork(candidate);}
     },Math.max(0,candidate.delaySeconds??0)*1000);
     return ()=>clearTimeout(timer);
   }, [units, group, pathname, enabled, adsenseAllowed, networkPick]);
