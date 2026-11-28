@@ -136,7 +136,7 @@ describe('network ad compatibility',()=>{
   it('prepares a popunder test without approving or enabling code',()=>{
     const pop={id:'pop',name:'Adsterra - Popunder',provider:'adsterra',format:'script',enabled:false,scriptApproved:false} as AdUnit;
     expect(adKind(pop)).toBe('popunder');
-    expect(suggestedPopunderTest(pop)).toMatchObject({enabled:false,scriptApproved:false,pages:['home','browse','comic','reader','house'],frequencyMinutes:30});
+    expect(suggestedPopunderTest(pop)).toMatchObject({enabled:false,scriptApproved:false,pages:['home','browse','comic','reader','house'],frequencyMinutes:2});
     expect(suggestedPopunderTest({...pop,name:'Adsterra - Smartlink',format:'banner',enabled:true}).enabled).toBe(false);
   });
   it('does not request another paid network as a fallback',()=>{
@@ -209,5 +209,19 @@ describe('HilltopAds MultiTag bootstrap compatibility',()=>{
     expect(directTagKind(bootstrap('//example.com/a'),'hilltopads')).toBe('invalid');
     expect(directTagKind('<script>alert(1)</script>','hilltopads')).toBe('invalid');
     expect(directTagKind(bootstrap('//same-upstairs.com/a')+'<script>alert(1)</script>','hilltopads')).toBe('invalid');
+  });
+});
+
+import { suggestedHilltopLayout, ONCLICK_MINUTES } from '@/features/ads/placement';
+describe('HilltopAds home layout preset',()=>{
+  it('uses independent top banners and the middle native banner, without approving anything',()=>{
+    const h={provider:'hilltopads',format:'banner',name:'RongNho - Banner Desktop',placementId:'7669125',enabled:false,scriptApproved:false} as AdUnit;
+    expect(suggestedHilltopLayout(h)).toMatchObject({slots:['site_top'],device:'desktop',width:300,height:250,enabled:false,scriptApproved:false});
+    expect(suggestedHilltopLayout({...h,name:'RongNho - Banner Mobile',placementId:'7669141'})).toMatchObject({slots:['site_top'],device:'mobile',width:300,height:100});
+    expect(suggestedHilltopLayout({...h,provider:'adsterra',name:'Native Banner'}).slots).toContain('home_middle');
+    expect(suggestedHilltopLayout({...h,provider:'adsterra',name:'Smartlink',enabled:true}).enabled).toBe(false);
+    expect(suggestedHilltopLayout({...h,provider:'adsterra',format:'script',name:'Popunder',enabled:true}).enabled).toBe(false);
+    expect(suggestedHilltopLayout({...h,format:'newtab',targetUrl:'https://example.com/official',name:'OnClick'}).frequencyMinutes).toBe(ONCLICK_MINUTES);
+    expect(ONCLICK_MINUTES).toBe(2);
   });
 });
