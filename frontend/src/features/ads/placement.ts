@@ -1,4 +1,4 @@
-import type { AdSlot, AdUnit } from '@/types/api';
+import type { AdPage, AdSlot, AdUnit } from '@/types/api';
 export function dimensions(u:AdUnit):{width:number;height:number}|null {
   if(u.width&&u.height)return {width:u.width,height:u.height};
   const h=u.html??'',w=h.match(/['"]?width['"]?\s*:\s*(\d{2,4})\b/i),y=h.match(/['"]?height['"]?\s*:\s*(\d{2,4})\b/i);
@@ -10,6 +10,38 @@ export function fitsSlot(u:AdUnit,slot:AdSlot,width:number,viewport:number):bool
   const d=dimensions(u);
   if(slot==='side_left'||slot==='side_right')return viewport>=1700&&!!d&&d.width<=width&&d.height<=600;
   return !d||d.width<=width;
+}
+// Each network HTML tag gets a single deterministic position per document.
+const slotOrder:Record<AdPage,AdSlot[]>={
+  home:['home_middle','home_extra','home_top','site_top','site_bottom','side_left','side_right'],
+  comic:['comic_chapters','comic_top','site_top','site_bottom','side_left','side_right'],
+  browse:['browse_top','site_top','site_bottom','side_left','side_right'],
+  house:['house_top','site_top','site_bottom','side_left','side_right'],
+  reader:['reader_top','reader_bottom'],library:[],other:[]
+};
+export function assignedBannerSlot(u:AdUnit,page:AdPage):AdSlot|undefined {
+  if(u.format!=='banner'||!u.html||!/<script\b/i.test(u.html))return undefined;
+  return slotOrder[page].find(slot=>u.slots?.includes(slot));
+}
+export function isKnownAdsterraTag(u:AdUnit):boolean {
+  return u.provider==='adsterra'&&u.format==='banner'&&/https:\/\/bauval\.org\/(?:21|22)\/[a-f0-9]{32}/i.test(u.html??'');
+}
+export const PUBLIC_AD_PAGES:AdPage[]=['home','browse','comic','reader','house'];
+// Only provider-issued HilltopAds Popunder Direct URL or direct sponsorships.
+// Third-party URL must be confirmed by publisher to support this usage.
+export function eligibleOnClickLink(u:AdUnit):boolean {
+  if(u.format!=='newtab'||(u.provider!=='hilltopads'&&u.provider!=='direct')||!u.targetUrl)return false;
+  try{const url=new URL(u.targetUrl);return url.protocol==='https:'&&!url.username&&!url.password;}catch{return false;}
+}
+export function isPublicContentClick(target:Element):boolean {
+  if(target.closest('[data-ad], [data-ad-exclude], input, textarea, select, form, [contenteditable], [disabled], [aria-disabled="true"]'))return false;
+  const anchor=target.closest('a[href]');
+  if(anchor){
+    const href=anchor.getAttribute('href')??'';
+    return /^(\/(?:truyen|doc|the-loai|nhom-dich)(?:\/|[?#]|$)|\/(?:[?#].*)?)$/.test(href)
+      || /^\/(?:truyen|doc|the-loai|nhom-dich)\/[^/]/.test(href);
+  }
+  return target.closest('[data-ad-trigger]')!==null;
 }
 export function weightedPick<T extends {weight?:number|null}>(units:T[],seed:number):T|undefined {
   const weights=units.map(u=>Math.max(1,Math.min(100,u.weight??1)));
@@ -25,10 +57,10 @@ export function standaloneLink(html:string|null):{href:string;label:string}|null
   if([...a.attributes].some(x=>!['href','target','rel','title','class'].includes(x.name)))return null;
   return {href:a.href,label:a.textContent?.trim()||'Xem quảng cáo'};
 }
-export type AdDiagnosticState='loading'|'element'|'no-element'|'script-error'|'injected'|'invalid-tag'|'duplicate'|'sync-limit'|'fallback';
+export type AdDiagnosticState='loading'|'element'|'no-element'|'script-error'|'injected'|'invalid-tag'|'duplicate'|'sync-limit'|'fallback'|'approval-required';
 type State=AdDiagnosticState;
 export const diagnosticLabel:Record<State,string> = {
-  loading:'Đang nạp',element:'Có phần tử quảng cáo (chưa xác nhận impression)', 'no-element':'Không phát hiện nội dung', 'script-error':'Lỗi tải script',injected:'Đã nạp mã mạng', 'invalid-tag':'Tag không tương thích',duplicate:'Trùng mã hoặc container', 'sync-limit':'Đã có banner đồng bộ trong tài liệu',fallback:'Đang dùng ảnh dự phòng'
+  loading:'Đang nạp',element:'Có phần tử quảng cáo (chưa xác nhận impression)', 'no-element':'Không phát hiện nội dung', 'script-error':'Lỗi tải script',injected:'Đã nạp mã mạng', 'invalid-tag':'Tag không tương thích',duplicate:'Trùng mã hoặc container', 'sync-limit':'Đã có banner đồng bộ trong tài liệu',fallback:'Đang dùng ảnh dự phòng','approval-required':'Tag Adsterra cần xác minh chế độ trực tiếp hoặc mã tương thích iframe'
 };
 /** Single external script from the provider; preserve all supplied attributes. */
 export function singleNetworkScript(html:string|null):HTMLScriptElement|null {
@@ -53,6 +85,11 @@ export function adsterraScriptPosition(u:AdUnit): 'head'|'body'|null {
   return null;
 }
 export function adKind(u:AdUnit): 'popunder'|'socialbar'|'smartlink'|'other' {
+  if(u.provider==='hilltopads'||u.provider==='clickadu'){
+    if(/popunder|onclick|tab[ -]?up|clickunder/i.test(u.name))return 'popunder';
+    if(/social\s*bar|in[ -]?page/i.test(u.name))return 'socialbar';
+    return 'other';
+  }
   if(u.provider!=='adsterra')return 'other';
   const position=adsterraScriptPosition(u);
   if(position==='head')return 'popunder';
@@ -66,7 +103,7 @@ export function adKind(u:AdUnit): 'popunder'|'socialbar'|'smartlink'|'other' {
 export function suggestedPopunderTest(u:AdUnit):AdUnit {
   const kind=adKind(u);
   if(kind==='smartlink'||kind==='socialbar')return {...u,enabled:false};
-  if(kind==='popunder'&&u.format==='script')return {...u,pages:['home','comic','reader'],delaySeconds:0,frequencyMinutes:30};
+  if(kind==='popunder'&&(u.format==='script'||eligibleOnClickLink(u)))return {...u,pages:[...PUBLIC_AD_PAGES],delaySeconds:0,frequencyMinutes:30,trigger:'content'};
   return u;
 }
 // A fallback must already be configured in this slot and be a direct image creative,

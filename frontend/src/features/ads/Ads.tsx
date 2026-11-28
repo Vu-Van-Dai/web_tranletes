@@ -7,7 +7,7 @@ import type { AdPage, AdSlot as AdSlotName, AdUnit } from '@/types/api';
 import { isAllowedAdUnit, isDirectBanner, requiresDirectScript } from './providers';
 import { hasVisibleCreative, loadedDirectBanners, mountDirectBanner } from './directCreative';
 import { useAuth } from '@/features/auth/AuthProvider';
-import { dimensions, fitsSlot, weightedPick, standaloneLink, noteAd, imageFallback, adKind, singleNetworkScript, adsterraScriptPosition } from './placement';
+import { dimensions, fitsSlot, weightedPick, standaloneLink, noteAd, imageFallback, adKind, singleNetworkScript, adsterraScriptPosition, assignedBannerSlot, isKnownAdsterraTag, eligibleOnClickLink, isPublicContentClick } from './placement';
 import { comicRoute, chapterRoute } from '@/app/paths';
 import { cn } from '@/utils/format';
 
@@ -212,6 +212,8 @@ function IsolatedBanner({unit,slot,onFailure}:{unit:AdUnit;slot:AdSlotName;onFai
 /** One weighted choice per slot; independent slots can coexist. */
 export function AdSlot({slot,className}:{slot:AdSlotName;className?:string}){
   const units=useAdUnits();
+  const {pathname}=useLocation();
+  const group=pageGroupOf(pathname);
   const host=useRef<HTMLDivElement>(null);
   const [size,setSize]=useState({width:0,viewport:0});
   const [pick]=useState(()=>Math.random());
@@ -222,7 +224,11 @@ export function AdSlot({slot,className}:{slot:AdSlotName;className?:string}){
     measure();const observer=new ResizeObserver(measure);observer.observe(el);window.addEventListener('resize',measure);
     return ()=>{observer.disconnect();window.removeEventListener('resize',measure);};
   },[]);
-  const eligible=units.filter(u=>fitsSlot(u,slot,size.width,size.viewport));
+  const matching=units.filter(u=>fitsSlot(u,slot,size.width,size.viewport)&&(assignedBannerSlot(u,group)??slot)===slot);
+  // These exact supplied Adsterra tag families failed in the opaque iframe. Avoid
+  // knowingly showing a blank card; direct execution still requires explicit approval.
+  const eligible=matching.filter(u=>!isKnownAdsterraTag(u)||isDirectBanner(u));
+  useEffect(()=>{matching.filter(u=>isKnownAdsterraTag(u)&&!isDirectBanner(u)).forEach(u=>noteAd(u.id,slot,'approval-required'));},[units,slot,size.width,size.viewport,group]);
   const primary=weightedPick(eligible,pick);
   const failedPrimary=primary && failed===primary.id+':'+primary.html;
   const unit=primary&&failedPrimary?imageFallback(eligible,primary.id,pick):primary;
@@ -250,7 +256,7 @@ function injectScriptUnit(unit: AdUnit):boolean {
   // Adsterra supplies Popunder for the end of HEAD, Social Bar for the end of BODY.
   // React loads these dynamically after eligibility/approval, not during HTML parsing.
   const kind=adKind(unit);
-  if(kind==='popunder'||kind==='socialbar'){
+  if(unit.provider==='adsterra'&&(kind==='popunder'||kind==='socialbar')){
     const original=singleNetworkScript(unit.html);
     const position=adsterraScriptPosition(unit);
     if(!original||!position){noteAd(unit.id,'network','invalid-tag');return false;}
@@ -266,6 +272,19 @@ function injectScriptUnit(unit: AdUnit):boolean {
     noteAd(unit.id,'network','loading');
     (position==='head'?document.head:document.body).appendChild(script);
     return true;
+  }
+  // HilltopAds and Clickadu tags remain unmodified. Single external scripts
+  // are placed directly at the end of body; compound tags use the existing host.
+  const original=singleNetworkScript(unit.html);
+  if(original&&(unit.provider==='hilltopads'||unit.provider==='clickadu')){
+    const script=document.createElement('script');
+    for(const attr of original.attributes)script.setAttribute(attr.name,attr.value);
+    script.async=original.hasAttribute('async');
+    script.dataset.rnAd=unit.id;script.dataset.rnAdContent=unit.html;
+    script.addEventListener('load',()=>noteAd(unit.id,'network','injected'),{once:true});
+    script.addEventListener('error',()=>noteAd(unit.id,'network','script-error'),{once:true});
+    window.__rnAdScripts=true;window.__rnAdPath=window.location.pathname;
+    noteAd(unit.id,'network','loading');document.body.appendChild(script);return true;
   }
   const host = document.createElement('div');
   host.dataset.rnAd = unit.id;
@@ -314,6 +333,10 @@ export function AdsRuntime() {
   const group = pageGroupOf(pathname);
   const { enabled, site } = useAdEligibility();
   const [networkPick]=useState(()=>Math.random());
+  const {status}=useAuth();
+  const [onClickChoice,setOnClickChoice]=useState<'yes'|'no'|null>(()=>{try{const v=sessionStorage.getItem('rn_onclick_consent');return v==='yes'||v==='no'?v:null;}catch{return null;}});
+  const chooseOnClick=(choice:'yes'|'no')=>{setOnClickChoice(choice);try{sessionStorage.setItem('rn_onclick_consent',choice);}catch{/* optional */}};
+  const onClickAvailable=status==='anonymous'&&units.some(eligibleOnClickLink)&&!units.some(u=>u.format==='script'||u.format==='popup');
   const [popup, setPopup] = useState<{ unit: AdUnit; path: string } | null>(null);
   const adsenseAllowed = enabled && group === 'comic' && !!adsenseClient && site.data?.ads.providerEnabled?.adsense !== false;
 
@@ -358,31 +381,30 @@ export function AdsRuntime() {
     if (adsenseAllowed && (!window.__rnAdPath || window.__rnAdPath === pathname)) ensureAdsense();
   }, [adsenseAllowed, pathname]);
 
-  // New-tab ads. The clicked link or button keeps working normally in this tab; the ad opens in a separate tab
-  // the reader can close. Trigger "any": the next click anywhere. Trigger "content": clicks on a story, a chapter
-  // or a marked action button. Each unit's frequency cap applies (0 = once per page view).
-  useEffect(() => {
-    if (isAdFreePath(pathname) || units.some(u=>u.format==='script'||u.format==='popup')) return;
-    const candidates = units.filter((u) => u.format === 'newtab' && u.targetUrl && targets(u, group));
-    if (candidates.length === 0) return;
-    const shownAt = Date.now();
-    const onClick = (e: MouseEvent) => {
-      const target = e.target instanceof Element ? e.target : null;
-      if (!target || target.closest('[data-ad]')) return;
-      const onContent = target.closest(AD_TRIGGER_SELECTOR) !== null;
-      const unit = candidates.find((u) =>
-        (u.trigger !== 'content' || onContent)
-        && Date.now() - shownAt >= Math.max(0, u.delaySeconds ?? 0) * 1000
-        && isDue(u, pathname));
-      if (!unit) return;
-      recordShown(unit, pathname);
-      window.open(unit.targetUrl!, '_blank', 'noopener');
+  // Explicit opt-in, provider-supported URL only; never hijack a navigation.
+  useEffect(()=>{
+    if(!onClickAvailable||onClickChoice!=='yes'||isAdFreePath(pathname))return;
+    const candidates=units.filter(eligibleOnClickLink);
+    const shownAt=Date.now();
+    const onClick=(e:MouseEvent)=>{
+      if(!e.isTrusted||e.defaultPrevented||e.button!==0||e.ctrlKey||e.metaKey||e.shiftKey||e.altKey||!networkDue())return;
+      if(!(e.target instanceof Element)||!isPublicContentClick(e.target))return;
+      const candidate=weightedPick(candidates.filter(u=>isDue(u,pathname)&&Date.now()-shownAt>=Math.max(0,u.delaySeconds??0)*1000),networkPick);
+      if(!candidate)return;
+      // No preventDefault, simulated clicks or retries. Browser decides tab focus.
+      recordShown(candidate,pathname);recordNetwork(candidate);
+      window.open(candidate.targetUrl!,'_blank','noopener,noreferrer');
     };
-    document.addEventListener('click', onClick, true);
-    return () => document.removeEventListener('click', onClick, true);
-  }, [units, group, pathname]);
+    document.addEventListener('click',onClick,true);
+    return ()=>document.removeEventListener('click',onClick,true);
+  },[units,pathname,onClickAvailable,onClickChoice,networkPick]);
 
-  return popup && popup.path === pathname && units.some(u => u.id === popup.unit.id) ? <AdPopup unit={popup.unit} onClose={() => setPopup(null)} /> : null;
+  return <>
+    {onClickAvailable&&onClickChoice!=='no'&&<aside data-ad="" className="fixed bottom-20 right-3 z-40 max-w-[min(22rem,90vw)] rounded-xl border border-line bg-surface p-3 text-xs shadow-lg md:bottom-4">
+      {onClickChoice===null?<><p>Hỗ trợ Rồng Nhỏ bằng quảng cáo: khi bạn bấm liên kết đọc truyện hoặc điều hướng công khai, một tab quảng cáo có thể mở riêng. Bạn có thể tiếp tục đọc mà không bật tùy chọn này.</p><div className="mt-2 flex gap-3"><button type="button" className="font-semibold text-accent" onClick={()=>chooseOnClick('yes')}>Đồng ý</button><button type="button" className="text-muted" onClick={()=>chooseOnClick('no')}>Không, cảm ơn</button></div></>:<button type="button" onClick={()=>chooseOnClick('no')} className="text-muted">Tắt quảng cáo mở tab</button>}
+    </aside>}
+    {popup && popup.path === pathname && units.some(u => u.id === popup.unit.id) && <AdPopup unit={popup.unit} onClose={() => setPopup(null)} />}
+  </>;
 }
 
 /** Overlay panel; with closeMode "countdown" the close button only appears after the ad was visible long enough. */

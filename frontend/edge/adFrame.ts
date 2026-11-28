@@ -3,7 +3,7 @@
 export const AD_FRAME_PATH = '/ad-frame';
 export const AD_FRAME_HEADERS: Record<string, string> = {
   'Content-Type': 'text/html; charset=utf-8',
-  'Cache-Control': 'no-store',
+  'Cache-Control': 'no-store, no-transform',
   'X-Robots-Tag': 'noindex, nofollow',
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'SAMEORIGIN',
