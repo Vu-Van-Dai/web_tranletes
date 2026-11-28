@@ -4,8 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import { publicApi } from '@/services/api';
 import type { AdPage, AdSlot as AdSlotName, AdUnit } from '@/types/api';
-import { isAllowedAdUnit, isDirectBanner, requiresDirectScript } from './providers';
-import { hasVisibleCreative, loadedDirectBanners, mountDirectBanner } from './directCreative';
+import { isAdcashBanner, isAllowedAdUnit, isDirectBanner, requiresDirectScript } from './providers';
+import { hasVisibleCreative, loadedDirectBanners, mountAdcashBanner, mountDirectBanner } from './directCreative';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { dimensions, fitsSlot, standaloneLink, noteAd, adKind, singleNetworkScript, adsterraScriptPosition, planBanners, chooseNetworkUnit, eligibleOnClickLink, isPublicContentClick, ONCLICK_MINUTES } from './placement';
 import { comicRoute, chapterRoute } from '@/app/paths';
@@ -193,12 +193,13 @@ const AdLabel = () => <span className="text-[10px] font-medium uppercase trackin
  */
 function DirectBanner({ unit, slot, className, onFailure }: {unit: AdUnit; slot: AdSlotName; className?: string; onFailure?:()=>void}) {
   const host = useRef<HTMLDivElement>(null);
+  const containerId = 'rn-adcash-' + useId().replace(/[^a-zA-Z0-9_-]/g, '_');
   const [empty, setEmpty] = useState(false);
   const { pathname } = useLocation();
   const { status } = useAuth();
   useEffect(() => {
     const el = host.current;
-    if (!el || !unit.html || status !== 'anonymous') return;
+    if (!el || (!unit.html && !isAdcashBanner(unit)) || status !== 'anonymous') return;
     const controller = new AbortController();
     let noFill: number | undefined;
     // Defer execution past React StrictMode's trial mount.
@@ -206,10 +207,13 @@ function DirectBanner({ unit, slot, className, onFailure }: {unit: AdUnit; slot:
       if (controller.signal.aborted || (window.__rnAdPath && window.__rnAdPath !== pathname)) return;
       noteAd(unit.id,slot,'loading');
       const failure: {reason:import('./directCreative').DirectFailure} = {reason:'script-error'};
-      const ok = await mountDirectBanner(el, unit.id, unit.html!, controller.signal, () => {
+      const beforeRun = () => {
         window.__rnAdScripts = true;
         window.__rnAdPath = pathname;
-      }, reason => {failure.reason=reason;}, unit.provider);
+      };
+      const ok = isAdcashBanner(unit)
+        ? await mountAdcashBanner(el, unit.id, unit.placementId!, '#' + containerId, controller.signal, beforeRun, reason => {failure.reason=reason;})
+        : await mountDirectBanner(el, unit.id, unit.html!, controller.signal, beforeRun, reason => {failure.reason=reason;}, unit.provider);
       if (controller.signal.aborted) return;
       if (!ok) { noteAd(unit.id,slot,failure.reason==='cancelled'?'script-error':failure.reason); setEmpty(true);onFailure?.();return; }
       // Cannot inspect cross-origin iframe contents or assert a counted impression.
@@ -223,12 +227,12 @@ function DirectBanner({ unit, slot, className, onFailure }: {unit: AdUnit; slot:
       clearTimeout(start);
       if (noFill !== undefined) clearTimeout(noFill);
     };
-  }, [unit.id, unit.html, pathname, status, slot]);
+  }, [unit.id, unit.html, unit.placementId, unit.provider, pathname, status, slot, containerId]);
   if (empty || status !== 'anonymous') return null;
   return (
     <aside className={cn('rounded-2xl border border-line bg-surface p-2 text-center', className)} aria-label="Quảng cáo" data-ad="" data-testid={'ad-slot-' + slot}>
       <AdLabel />
-      <div ref={host} className="mx-auto w-full overflow-hidden" style={{maxWidth:dimensions(unit)?.width}} />
+      <div id={isAdcashBanner(unit)?containerId:undefined} ref={host} className="mx-auto w-full overflow-hidden" style={{maxWidth:dimensions(unit)?.width}} />
     </aside>
   );
 }
@@ -259,13 +263,13 @@ export function AdSlot({slot,className}:{slot:AdSlotName;className?:string}){
   },[]);
   const plan=useMemo(()=>planBanners(units,group,size.viewport,bannerPlanSeed),[units,group,size.viewport]);
   const candidates=(plan[slot]??[]).filter(u=>fitsSlot(u,slot,size.width,size.viewport));
-  const identity=(u:AdUnit)=>u.id+':'+u.html;
+  const identity=(u:AdUnit)=>u.id+':'+(isAdcashBanner(u)?'adcash:'+u.placementId:u.html??'');
   const unit=candidates.find(u=>!failed.includes(identity(u)));
   const fail=()=>{if(unit)setFailed(old=>old.includes(identity(unit))?old:[...old,identity(unit)]);};
   const primary=plan[slot]?.[0];
   useEffect(()=>{if(unit&&primary&&unit.id!==primary.id)noteAd(unit.id,slot,'fallback');},[primary,unit,slot]);
   return <div ref={host} data-ad-slot-wrapper="" className={cn('w-full min-w-0',className)}>
-    {unit&&(isDirectBanner(unit)?<DirectBanner key={unit.id+':'+unit.html} unit={unit} slot={slot} onFailure={fail}/>: (
+    {unit&&(isDirectBanner(unit)?<DirectBanner key={identity(unit)} unit={unit} slot={slot} onFailure={fail}/>: (
       <IsolatedBanner key={unit.id+':'+unit.html} unit={unit} slot={slot} onFailure={fail}/>))}
   </div>;
 }
@@ -395,7 +399,8 @@ export function AdsRuntime() {
     const hasAdsense = !!document.querySelector(`script[src^="${ADSENSE_SRC}"]`);
     if ((window.__rnAdPath && window.__rnAdPath !== pathname) ||
         (injected.length>0 && (onClickOff || !delivery || injected.some(el=>el.dataset.rnAd!==delivery.id))) ||
-        (window.__rnAdScripts && (!enabled || injected.some(el => !units.some(u => u.id === el.dataset.rnAd && u.format === 'script' && u.html === el.dataset.rnAdContent)) || loadedDirectBanners().some(([id, html]) => !units.some(u => u.id === id && isDirectBanner(u) && u.html === html)))) ||
+        (window.__rnAdScripts && (!enabled || injected.some(el => !units.some(u => u.id === el.dataset.rnAd && u.format === 'script' && u.html === el.dataset.rnAdContent)) || loadedDirectBanners().some(([id, signature]) => !units.some(u => u.id === id && isDirectBanner(u) &&
+          (isAdcashBanner(u) ? signature === 'adcash:' + u.placementId : u.html === signature))))) ||
         (hasAdsense && !adsenseAllowed)) {
       window.location.reload();
       return;
