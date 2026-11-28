@@ -27,7 +27,7 @@ function hilltopBootstrapUrl(script: HTMLScriptElement): string | null {
     return url.href;
   }catch{return null;}
 }
-export function parseDirectTag(html: string, provider?: string) {
+export function parseDirectTag(html: string, provider?: string | null) {
   const template = document.createElement('template');
   template.innerHTML = html;
   const scripts = [...template.content.children].filter((el): el is HTMLScriptElement => el instanceof HTMLScriptElement);
@@ -52,12 +52,12 @@ export function parseDirectTag(html: string, provider?: string) {
   return { template, scripts, urls, sync };
 }
 
-export function directTagKind(html: string, provider?: string): 'async' | 'sync' | 'invalid' {
+export function directTagKind(html: string, provider?: string | null): 'async' | 'sync' | 'invalid' {
   try { return parseDirectTag(html,provider).sync ? 'sync' : 'async'; } catch { return 'invalid'; }
 }
 
 /** Mount at most once per unit and script URL in a document. No automatic retries. */
-export function mountDirectBanner(host: HTMLElement, id: string, html: string, signal: AbortSignal, beforeRun: () => void, onFailure?: (reason:DirectFailure)=>void, provider?: string): Promise<boolean> {
+export function mountDirectBanner(host: HTMLElement, id: string, html: string, signal: AbortSignal, beforeRun: () => void, onFailure?: (reason:DirectFailure)=>void, provider?: string | null): Promise<boolean> {
   const run = async () => {
     const fail = (reason:DirectFailure) => { onFailure?.(reason); return false; };
     if (signal.aborted || !host.isConnected) return fail('cancelled');
