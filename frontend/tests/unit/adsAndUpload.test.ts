@@ -136,7 +136,7 @@ describe('network ad compatibility',()=>{
   it('prepares a popunder test without approving or enabling code',()=>{
     const pop={id:'pop',name:'Adsterra - Popunder',provider:'adsterra',format:'script',enabled:false,scriptApproved:false} as AdUnit;
     expect(adKind(pop)).toBe('popunder');
-    expect(suggestedPopunderTest(pop)).toMatchObject({enabled:false,scriptApproved:false,pages:['home','comic','reader'],frequencyMinutes:30});
+    expect(suggestedPopunderTest(pop)).toMatchObject({enabled:false,scriptApproved:false,pages:['home','browse','comic','reader','house'],frequencyMinutes:30});
     expect(suggestedPopunderTest({...pop,name:'Adsterra - Smartlink',format:'banner',enabled:true}).enabled).toBe(false);
   });
   it('does not request another paid network as a fallback',()=>{
@@ -170,5 +170,27 @@ describe('Adsterra publisher tag placement',()=>{
       expect(directTagKind(html)).toBe('sync');
       expect(dimensions({...script,format:'banner',html})).toEqual({width,height});
     }
+  });
+});
+
+import { assignedBannerSlot, isKnownAdsterraTag, eligibleOnClickLink, isPublicContentClick } from '@/features/ads/placement';
+describe('public ad placements and opt-in OnClick',()=>{
+  it('assigns a reused native tag to one preferred slot on each page',()=>{
+    const n={provider:'adsterra',format:'banner',html:'<script async src="https://bauval.org/21/'+ 'a'.repeat(32)+'"></script>',slots:['site_top','home_top','home_middle','comic_chapters','reader_bottom']} as AdUnit;
+    expect(assignedBannerSlot(n,'home')).toBe('home_middle');
+    expect(assignedBannerSlot(n,'comic')).toBe('comic_chapters');
+    expect(assignedBannerSlot(n,'reader')).toBe('reader_bottom');
+    expect(isKnownAdsterraTag(n)).toBe(true);
+  });
+  it('only accepts supported HTTPS new-tab URLs',()=>{
+    const ad={provider:'hilltopads',format:'newtab',targetUrl:'https://example.com/pop'} as AdUnit;
+    expect(eligibleOnClickLink(ad)).toBe(true);
+    expect(eligibleOnClickLink({...ad,provider:'adsterra'})).toBe(false);
+    expect(eligibleOnClickLink({...ad,targetUrl:'javascript:alert(1)'})).toBe(false);
+  });
+  it('limits clicks to public content and excludes management and forms',()=>{
+    document.body.innerHTML='<a id="logo" href="/">Logo</a><a id="list" href="/truyen">All</a><a id="house" href="/nhom-dich/rong-nho">House</a><a id="admin" href="/quan-tri">Admin</a><a id="studio" href="/quan-ly-nhom">Studio</a><button id="genre" data-ad-trigger>Genre</button><form><button id="form" data-ad-trigger>Form</button></form><div data-ad><a id="ad" href="/truyen">Ad</a></div>';
+    for(const id of ['logo','list','house','genre'])expect(isPublicContentClick(document.getElementById(id)!)).toBe(true);
+    for(const id of ['admin','studio','form','ad'])expect(isPublicContentClick(document.getElementById(id)!)).toBe(false);
   });
 });

@@ -61,7 +61,7 @@ function GenreMenu() {
 
   return (
     <div className="relative" ref={ref}>
-      <Button variant="ghost" size="sm" aria-expanded={open} onClick={() => setOpen((o) => !o)} icon={<Compass className="h-4 w-4" />}>
+      <Button variant="ghost" size="sm" data-ad-trigger aria-expanded={open} onClick={() => setOpen((o) => !o)} icon={<Compass className="h-4 w-4" />}>
         Thể loại
       </Button>
       {open && (
