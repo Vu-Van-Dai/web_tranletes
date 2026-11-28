@@ -103,7 +103,7 @@ export function adKind(u:AdUnit): 'popunder'|'socialbar'|'smartlink'|'other' {
 export function suggestedPopunderTest(u:AdUnit):AdUnit {
   const kind=adKind(u);
   if(kind==='smartlink'||kind==='socialbar')return {...u,enabled:false};
-  if(kind==='popunder'&&(u.format==='script'||eligibleOnClickLink(u)))return {...u,pages:[...PUBLIC_AD_PAGES],delaySeconds:0,frequencyMinutes:30,trigger:'content'};
+  if(kind==='popunder'&&(u.format==='script'||eligibleOnClickLink(u)))return {...u,pages:[...PUBLIC_AD_PAGES],delaySeconds:0,frequencyMinutes:2,trigger:'content'};
   return u;
 }
 // A fallback must already be configured in this slot and be a direct image creative,
@@ -140,5 +140,27 @@ export function suggestedAdsterraLayout(u:AdUnit):AdUnit{
   }
   if(u.format==='banner'&&/native/i.test(u.name))return {...u,slots:['home_middle']};
   if(u.format==='banner'&&/smartlink/i.test(u.name))return {...u,slots:['site_bottom']};
+  return u;
+}
+
+export const ONCLICK_MINUTES=2;
+/** Draft only: retain tags and approvals, assign distinct banner placements. */
+export function suggestedHilltopLayout(u:AdUnit):AdUnit {
+  const kind=adKind(u);
+  if(u.provider==='adsterra'&&(kind==='smartlink'||kind==='popunder'||kind==='socialbar'))return {...u,enabled:false};
+  if(u.provider==='adsterra'&&u.format==='banner'&&/native/i.test(u.name))return {...u,slots:['home_middle','comic_chapters','reader_bottom']};
+  // Keep the top slot reserved for distinct Hilltop tags in this preset.
+  if(u.provider==='adsterra'&&u.format==='banner'&&u.slots?.includes('site_top')){
+    const slots=u.slots.filter(slot=>slot!=='site_top');
+    return {...u,slots,enabled:slots.length>0&&u.enabled};
+  }
+  if(u.provider!=='hilltopads')return u;
+  if(eligibleOnClickLink(u))return {...u,pages:[...PUBLIC_AD_PAGES],delaySeconds:0,frequencyMinutes:ONCLICK_MINUTES,trigger:'content'};
+  if(u.format==='banner'){
+    const d=dimensions(u);
+    if(u.placementId==='7669125'||/300\s*[x×]\s*250|banner desktop/i.test(u.name)||d?.width===300&&d.height===250)return {...u,slots:['site_top'],device:'desktop',width:300,height:250};
+    if(u.placementId==='7669141'||/300\s*[x×]\s*100|banner mobile/i.test(u.name)||d?.width===300&&d.height===100)return {...u,slots:['site_top'],device:'mobile',width:300,height:100};
+  }
+  if(u.format==='script'||u.format==='popup')return {...u,enabled:false};
   return u;
 }

@@ -7,7 +7,7 @@ import type { AdPage, AdSlot as AdSlotName, AdUnit } from '@/types/api';
 import { isAllowedAdUnit, isDirectBanner, requiresDirectScript } from './providers';
 import { hasVisibleCreative, loadedDirectBanners, mountDirectBanner } from './directCreative';
 import { useAuth } from '@/features/auth/AuthProvider';
-import { dimensions, fitsSlot, weightedPick, standaloneLink, noteAd, bannerFallback, adKind, singleNetworkScript, adsterraScriptPosition, assignedBannerSlot, isKnownAdsterraTag, eligibleOnClickLink, isPublicContentClick } from './placement';
+import { dimensions, fitsSlot, weightedPick, standaloneLink, noteAd, bannerFallback, adKind, singleNetworkScript, adsterraScriptPosition, assignedBannerSlot, isKnownAdsterraTag, eligibleOnClickLink, isPublicContentClick, ONCLICK_MINUTES } from './placement';
 import { comicRoute, chapterRoute } from '@/app/paths';
 import { cn } from '@/utils/format';
 
@@ -141,27 +141,27 @@ function HtmlCreative({ html, title, minHeight = 90, onState }: { html: string; 
 }
 
 /** Rotate only on an explicitly labelled sponsored link. A navigation click
- * can still use the separately consented HilltopAds flow. */
+ * can still use the separately disclosed HilltopAds flow. */
 function SponsoredLink({unit, href, label}: {unit: AdUnit; href: string; label: string}) {
   const units = useAdUnits();
   const { pathname } = useLocation();
   const { status } = useAuth();
-  const [availableAt, setAvailableAt] = useState(() => networkDeadline());
+  const [availableAt, setAvailableAt] = useState(() => sponsoredDeadline());
   useEffect(() => {
     if (!availableAt) return;
     const timer = window.setTimeout(() => setAvailableAt(0), Math.max(0, availableAt - Date.now()));
     return () => clearTimeout(timer);
   }, [availableAt]);
   const open = () => {
-    if (!networkDue()) { setAvailableAt(networkDeadline()); return; }
+    if (!networkDue() || !onClickDue()) { setAvailableAt(sponsoredDeadline()); return; }
     const alternatives = status === 'anonymous' ? units.filter(eligibleOnClickLink) : [];
-    const smartlink = {...unit, frequencyMinutes: 2};
+    const smartlink = {...unit, frequencyMinutes: ONCLICK_MINUTES};
     const due = [smartlink, ...alternatives].filter(u => isDue(u, pathname));
     const candidate = due.sort((a,b) => lastSeen(a.id) - lastSeen(b.id))[0];
     if (!candidate) return;
     recordShown(candidate, pathname);
-    recordNetwork({...candidate, frequencyMinutes: Math.max(2, candidate.frequencyMinutes ?? 2)});
-    setAvailableAt(networkUntil);
+    markOnClick();
+    setAvailableAt(sponsoredDeadline());
     window.open(candidate.id === unit.id ? href : candidate.targetUrl!, '_blank', 'noopener,noreferrer');
   };
   return <button type="button" disabled={availableAt > Date.now()} onClick={open}
@@ -341,9 +341,15 @@ function injectScriptUnit(unit: AdUnit):boolean {
 }
 
 const NETWORK_UNTIL='rn_ad_network_until';
+const ONCLICK_LAST='rn_ad_onclick_last_v2';
+let lastOnClick=0;
+function onClickDeadline(){try{return Math.max(lastOnClick,Number(localStorage.getItem(ONCLICK_LAST))||0)+ONCLICK_MINUTES*60_000;}catch{return lastOnClick+ONCLICK_MINUTES*60_000;}}
+function onClickDue(){return Date.now()>=onClickDeadline();}
+function markOnClick(){lastOnClick=Date.now();try{localStorage.setItem(ONCLICK_LAST,String(lastOnClick));}catch{/* optional */}}
 let networkUntil=0;
 function networkDeadline(){try{return Math.max(networkUntil,Number(localStorage.getItem(NETWORK_UNTIL))||0);}catch{return networkUntil;}}
 function networkDue(){return Date.now()>=networkDeadline();}
+function sponsoredDeadline(){return Math.max(networkDeadline(),onClickDeadline());}
 function recordNetwork(unit:AdUnit){networkUntil=Date.now()+Math.max(1,unit.frequencyMinutes??30)*60_000;try{localStorage.setItem(NETWORK_UNTIL,String(networkUntil));}catch{/* optional */}}
 
 /**
@@ -366,9 +372,12 @@ export function AdsRuntime() {
   const { enabled, site } = useAdEligibility();
   const [networkPick]=useState(()=>Math.random());
   const {status}=useAuth();
-  const [onClickChoice,setOnClickChoice]=useState<'yes'|'no'|null>(()=>{try{const v=sessionStorage.getItem('rn_onclick_consent');return v==='yes'||v==='no'?v:null;}catch{return null;}});
-  const chooseOnClick=(choice:'yes'|'no')=>{setOnClickChoice(choice);try{sessionStorage.setItem('rn_onclick_consent',choice);}catch{/* optional */}};
-  const onClickAvailable=status==='anonymous'&&units.some(eligibleOnClickLink)&&!units.some(u=>u.format==='script'||u.format==='popup');
+  const [onClickOff,setOnClickOff]=useState(()=>{try{return sessionStorage.getItem('rn_onclick_consent')==='no';}catch{return false;}});
+  const turnOffOnClick=()=>{setOnClickOff(true);try{sessionStorage.setItem('rn_onclick_consent','no');}catch{/* optional */}};
+  const onClickAvailable=status==='anonymous'&&units.some(eligibleOnClickLink);
+  // A configured direct OnClick takes priority; never mix vendor popup scripts.
+  const config=site.data?.ads;
+  const directConfigured=!!config&&config.units.some(u=>isAllowedAdUnit(config,u)&&eligibleOnClickLink(u));
   const [popup, setPopup] = useState<{ unit: AdUnit; path: string } | null>(null);
   const adsenseAllowed = enabled && group === 'comic' && !!adsenseClient && site.data?.ads.providerEnabled?.adsense !== false;
 
@@ -379,12 +388,13 @@ export function AdsRuntime() {
     const injected = Array.from(document.querySelectorAll<HTMLElement>('[data-rn-ad]'));
     const hasAdsense = !!document.querySelector(`script[src^="${ADSENSE_SRC}"]`);
     if ((window.__rnAdPath && window.__rnAdPath !== pathname) ||
+        (directConfigured && injected.length>0) ||
         (window.__rnAdScripts && (!enabled || injected.some(el => !units.some(u => u.id === el.dataset.rnAd && u.format === 'script' && u.html === el.dataset.rnAdContent)) || loadedDirectBanners().some(([id, html]) => !units.some(u => u.id === id && isDirectBanner(u) && u.html === html)))) ||
         (hasAdsense && !adsenseAllowed)) {
       window.location.reload();
       return;
     }
-    if (!enabled) return;
+    if (!enabled || directConfigured) return;
     // Cap injection, not the vendor's actual popup count or paid impressions.
     if(injected.length||!networkDue())return;
     const candidate=weightedPick(units.filter(u=>u.format==='script'&&targets(u,group)&&isDue(u,pathname)),networkPick);
@@ -394,11 +404,11 @@ export function AdsRuntime() {
       if(injectScriptUnit(candidate)){recordShown(candidate,pathname);recordNetwork(candidate);}
     },Math.max(0,candidate.delaySeconds??0)*1000);
     return ()=>clearTimeout(timer);
-  }, [units, group, pathname, enabled, adsenseAllowed, networkPick]);
+  }, [units, group, pathname, enabled, adsenseAllowed, networkPick,directConfigured]);
 
   // Pop-up: first eligible unit for this page, after its delay.
   useEffect(() => {
-    if (isAdFreePath(pathname) || units.some(u=>u.format==='script')) return;
+    if (isAdFreePath(pathname) || directConfigured || units.some(u=>u.format==='script')) return;
     const unit = units.find((u) => u.format === 'popup' && targets(u, group) && isDue(u, pathname));
     if (!unit) return;
     const id = setTimeout(() => {
@@ -406,35 +416,33 @@ export function AdsRuntime() {
       setPopup({ unit, path: pathname });
     }, Math.max(0, unit.delaySeconds ?? 0) * 1000);
     return () => clearTimeout(id);
-  }, [units, group, pathname]);
+  }, [units, group, pathname,directConfigured]);
 
   // Only explicitly enabled Auto ads on classified, non-mature comic pages.
   useEffect(() => {
     if (adsenseAllowed && (!window.__rnAdPath || window.__rnAdPath === pathname)) ensureAdsense();
   }, [adsenseAllowed, pathname]);
 
-  // Explicit opt-in, provider-supported URL only; never hijack a navigation.
+  // Default-on with visible notice and opt-out; provider-supported URL only.
   useEffect(()=>{
-    if(!onClickAvailable||onClickChoice!=='yes'||isAdFreePath(pathname))return;
+    if(!onClickAvailable||onClickOff||isAdFreePath(pathname))return;
     const candidates=units.filter(eligibleOnClickLink);
     const shownAt=Date.now();
     const onClick=(e:MouseEvent)=>{
-      if(!e.isTrusted||e.defaultPrevented||e.button!==0||e.ctrlKey||e.metaKey||e.shiftKey||e.altKey||!networkDue())return;
+      if(!e.isTrusted||e.defaultPrevented||e.button!==0||e.ctrlKey||e.metaKey||e.shiftKey||e.altKey||!onClickDue())return;
       if(!(e.target instanceof Element)||!isPublicContentClick(e.target))return;
-      const candidate=weightedPick(candidates.filter(u=>isDue(u,pathname)&&Date.now()-shownAt>=Math.max(0,u.delaySeconds??0)*1000),networkPick);
+      const candidate=weightedPick(candidates.filter(u=>Date.now()-shownAt>=Math.max(0,u.delaySeconds??0)*1000),networkPick);
       if(!candidate)return;
       // No preventDefault, simulated clicks or retries. Browser decides tab focus.
-      recordShown(candidate,pathname);recordNetwork(candidate);
+      markOnClick();
       window.open(candidate.targetUrl!,'_blank','noopener,noreferrer');
     };
     document.addEventListener('click',onClick,true);
     return ()=>document.removeEventListener('click',onClick,true);
-  },[units,pathname,onClickAvailable,onClickChoice,networkPick]);
+  },[units,pathname,onClickAvailable,onClickOff,networkPick]);
 
   return <>
-    {onClickAvailable&&onClickChoice!=='no'&&<aside data-ad="" className="fixed bottom-20 right-3 z-40 max-w-[min(22rem,90vw)] rounded-xl border border-line bg-surface p-3 text-xs shadow-lg md:bottom-4">
-      {onClickChoice===null?<><p>Hỗ trợ Rồng Nhỏ bằng quảng cáo: khi bạn bấm liên kết đọc truyện hoặc điều hướng công khai, một tab quảng cáo có thể mở riêng. Bạn có thể tiếp tục đọc mà không bật tùy chọn này.</p><div className="mt-2 flex gap-3"><button type="button" className="font-semibold text-accent" onClick={()=>chooseOnClick('yes')}>Đồng ý</button><button type="button" className="text-muted" onClick={()=>chooseOnClick('no')}>Không, cảm ơn</button></div></>:<button type="button" onClick={()=>chooseOnClick('no')} className="text-muted">Tắt quảng cáo mở tab</button>}
-    </aside>}
+    {onClickAvailable&&!onClickOff&&<aside data-ad="" className="fixed bottom-20 right-3 z-40 max-w-[min(22rem,90vw)] rounded-xl border border-line bg-surface p-3 text-xs shadow-lg md:bottom-4"><p>Liên kết đọc truyện và điều hướng có thể mở tab quảng cáo riêng (tối đa 1 lần / 2 phút).</p><button type="button" onClick={turnOffOnClick} className="mt-1 text-muted underline">Tắt quảng cáo mở tab</button></aside>}
     {popup && popup.path === pathname && units.some(u => u.id === popup.unit.id) && <AdPopup unit={popup.unit} onClose={() => setPopup(null)} />}
   </>;
 }
