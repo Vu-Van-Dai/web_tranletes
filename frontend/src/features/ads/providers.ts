@@ -22,6 +22,7 @@ export function requiresDirectScript(unit: AdUnit): boolean {
 export function isAllowedAdUnit(config: AdsConfig, unit: AdUnit): boolean {
   const provider = providerOf(unit);
   return config.enabled && unit.enabled && provider !== 'adsense' &&
+    !(unit.provider === 'adcash' && !isAdcashBanner(unit)) &&
     config.providerEnabled?.[provider] !== false &&
     (!requiresDirectScript(unit) || (config.allowDirectScripts === true && unit.scriptApproved === true));
 }
