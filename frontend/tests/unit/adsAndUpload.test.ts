@@ -259,3 +259,41 @@ describe('visual footer banner inventory',()=>{
     expect(footerBannerReservation([banner,other],'reader',1280)).toBeUndefined();
   });
 });
+
+import { planBanners, chooseNetworkUnit, suggestedMultiProviderLayout } from '@/features/ads/placement';
+describe('page-wide banner allocation',()=>{
+  const tag=(id:string,provider:AdUnit['provider'],slots:AdUnit['slots'],name=id)=>({id,name,provider,slots,format:'banner',enabled:true,scriptApproved:true,html:'<script async src="https://example.com/'+id+'.js"></script>'} as AdUnit);
+  it('preserves native in middle and assigns independent providers to other configured slots',()=>{
+    const native=tag('native','adsterra',['home_middle','site_top','site_bottom'],'Native Banner');
+    const top=tag('top','hilltopads',['site_top','site_bottom']);
+    const bottom=tag('bottom','hilltopads',['site_bottom']);
+    const plan=planBanners([native,top,bottom],'home',1280,0);
+    expect(plan.home_middle?.[0]?.id).toBe('native');
+    expect(plan.site_top?.[0]?.id).toBe('top');
+    expect(plan.site_bottom?.[0]?.id).toBe('bottom');
+  });
+  it('never reserves the same tag or second synchronous global script',()=>{
+    const a={...tag('sync-a','adsterra',['site_top']),html:'<script>atOptions={}</script><script src="https://example.com/a.js"></script>'};
+    const b={...tag('sync-b','adsterra',['home_extra']),html:'<script>atOptions={}</script><script src="https://example.com/b.js"></script>'};
+    const other=tag('other','hilltopads',['home_extra','site_bottom']);
+    const clone={...other,id:'clone',slots:['site_bottom'] as AdUnit['slots']};
+    const plan=planBanners([a,b,other,clone],'home',1280,0);
+    const all=Object.values(plan).flat();
+    expect(all.filter(u=>u.id.startsWith('sync')).length).toBe(1);
+    expect(all.filter(u=>u.html===other.html).length).toBe(1);
+  });
+  it('reserves an unused different-provider fallback and excludes Smartlinks',()=>{
+    const a=tag('a','adsterra',['home_middle']);
+    const b=tag('b','hilltopads',['home_middle']);
+    const link={...a,id:'smart',name:'Smartlink',html:'<a href="https://example.com">Ad</a>'};
+    const plan=planBanners([a,b,link],'home',1280,0);
+    expect(plan.home_middle?.map(u=>u.id)).toEqual(['a','b']);
+    expect(suggestedMultiProviderLayout({...b,enabled:false,scriptApproved:false})).toMatchObject({enabled:false,scriptApproved:false});
+    expect(suggestedMultiProviderLayout(b).slots).toContain('site_bottom');
+  });
+  it('chooses the least recently attempted network instead of permanently preferring direct links',()=>{
+    const a=tag('a','adsterra',[]),b=tag('b','hilltopads',[]);
+    expect(chooseNetworkUnit([a,b],id=>id==='a'?500:0,0)?.id).toBe('b');
+    expect(chooseNetworkUnit([a,b],id=>id==='b'?500:0,0)?.id).toBe('a');
+  });
+});

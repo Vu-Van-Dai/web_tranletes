@@ -1,4 +1,6 @@
 import type { AdPage, AdSlot, AdUnit } from '@/types/api';
+import { isDirectBanner } from './providers';
+import { parseDirectTag } from './directCreative';
 export function dimensions(u:AdUnit):{width:number;height:number}|null {
   if(u.width&&u.height)return {width:u.width,height:u.height};
   const h=u.html??'',w=h.match(/['"]?width['"]?\s*:\s*(\d{2,4})\b/i),y=h.match(/['"]?height['"]?\s*:\s*(\d{2,4})\b/i);
@@ -183,4 +185,63 @@ export function suggestedHilltopLayout(u:AdUnit):AdUnit {
   }
   if(u.format==='script'||u.format==='popup')return {...u,enabled:false};
   return u;
+}
+
+/** Plan once per viewport/page using the actual configured slots. A tag, source URL,
+ * container ID and the global synchronous script budget cannot be allocated twice.
+ * The second pass reserves at most one distinct-provider fallback per slot. */
+export function planBanners(units:AdUnit[],page:AdPage,viewport:number,seed:number):Partial<Record<AdSlot,AdUnit[]>> {
+  const result:Partial<Record<AdSlot,AdUnit[]>>={};
+  if(viewport<=0)return result;
+  const order=slotOrder[page];
+  const slots=page==='home'?(['home_middle','site_top','home_top','home_extra','site_bottom','side_left','side_right'] as AdSlot[]):order;
+  const width=(s:AdSlot)=>s==='side_left'||s==='side_right'?162:Math.max(0,Math.min(viewport,s==='reader_top'||s==='reader_bottom'?900:1280)-(viewport<640?50:66));
+  const inventory=units.filter(u=>u.enabled&&isVisualBanner(u)&&(!isKnownAdsterraTag(u)||isDirectBanner(u))).flatMap(u=>{
+    const allowed=slots.filter(s=>fitsSlot(u,s,width(s),viewport));
+    if(!allowed.length)return [];
+    let keys=[u.id,...(u.html?['html:'+u.html]:[])],sync=false;
+    if(isDirectBanner(u)){
+      try{const tag=parseDirectTag(u.html!,u.provider);sync=tag.sync;keys=[...keys,...tag.urls.map(v=>'src:'+v),...[...tag.template.content.querySelectorAll('[id]')].map(v=>'container:'+v.id)];}catch{return [];}
+    }
+    return [{u,allowed,keys,sync}];
+  });
+  const used=new Set<string>();
+  let syncUsed=false;
+  const available=(v:typeof inventory[number])=>!v.keys.some(k=>used.has(k))&&(!v.sync||!syncUsed);
+  const take=(v:typeof inventory[number])=>{v.keys.forEach(k=>used.add(k));syncUsed ||= v.sync;};
+  for(const slot of slots){
+    const candidates=inventory.filter(v=>v.allowed.includes(slot)&&available(v));
+    if(!candidates.length)continue;
+    const preferred=slot==='home_middle'?candidates.filter(v=>/native/i.test(v.u.name)): [];
+    const pool=preferred.length?preferred:candidates;
+    const min=Math.min(...pool.map(v=>v.allowed.length));
+    const narrow=pool.filter(v=>v.allowed.length===min);
+    const selected=weightedPick(narrow.map(v=>({...v,weight:v.u.weight})),seed);
+    if(selected){take(selected);result[slot]=[selected.u];}
+  }
+  for(const slot of slots){
+    const primary=result[slot]?.[0];if(!primary)continue;
+    const candidates=inventory.filter(v=>v.allowed.includes(slot)&&available(v)&&v.u.provider!==primary.provider);
+    const selected=weightedPick(candidates.map(v=>({...v,weight:v.u.weight})),seed);
+    if(selected){take(selected);result[slot]!.push(selected.u);}
+  }
+  return result;
+}
+
+/** Rotation by least recently attempted eligible unit, with weights only breaking ties.
+ * Callers must enforce the one-network-per-document rule and provider frequency caps. */
+export function chooseNetworkUnit(units:AdUnit[],last:(id:string)=>number,seed:number):AdUnit|undefined {
+  if(!units.length)return undefined;
+  const oldest=Math.min(...units.map(u=>last(u.id)));
+  return weightedPick(units.filter(u=>last(u.id)===oldest),seed);
+}
+
+/** Expand candidate slots explicitly in an admin draft; never approve or enable inventory. */
+export function suggestedMultiProviderLayout(u:AdUnit):AdUnit {
+  if(adKind(u)==='smartlink')return {...u,enabled:false,slots:[]};
+  if(!isVisualBanner(u))return u;
+  const d=dimensions(u);
+  if(d&&d.width<=160&&d.height>=300)return {...u,slots:[d.height>=600?'side_left':'side_right'],device:'desktop'};
+  const common:AdSlot[]=['site_top','home_top','home_middle','home_extra','site_bottom','comic_top','comic_chapters','browse_top','house_top','reader_top','reader_bottom'];
+  return {...u,slots:common};
 }

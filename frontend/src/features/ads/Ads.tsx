@@ -7,7 +7,7 @@ import type { AdPage, AdSlot as AdSlotName, AdUnit } from '@/types/api';
 import { isAllowedAdUnit, isDirectBanner, requiresDirectScript } from './providers';
 import { hasVisibleCreative, loadedDirectBanners, mountDirectBanner } from './directCreative';
 import { useAuth } from '@/features/auth/AuthProvider';
-import { dimensions, fitsSlot, weightedPick, standaloneLink, noteAd, bannerFallback, adKind, singleNetworkScript, adsterraScriptPosition, assignedBannerSlot, footerBannerReservation, isKnownAdsterraTag, eligibleOnClickLink, isPublicContentClick, ONCLICK_MINUTES } from './placement';
+import { dimensions, fitsSlot, weightedPick, standaloneLink, noteAd, adKind, singleNetworkScript, adsterraScriptPosition, planBanners, chooseNetworkUnit, eligibleOnClickLink, isPublicContentClick, ONCLICK_MINUTES } from './placement';
 import { comicRoute, chapterRoute } from '@/app/paths';
 import { cn } from '@/utils/format';
 
@@ -240,33 +240,30 @@ function IsolatedBanner({unit,slot,onFailure}:{unit:AdUnit;slot:AdSlotName;onFai
     <AdLabel/><div className="mx-auto w-full overflow-hidden" style={{maxWidth:dimensions(unit)?.width}}><Creative unit={unit} onState={visible=>{noteAd(unit.id,slot,visible?'element':'no-element');if(!visible){setEmpty(true);onFailure?.();}}}/></div>
   </aside>;
 }
-/** One weighted choice per slot; independent slots can coexist. */
+// All slot components share the same seed and deterministic allocation per document.
+const bannerPlanSeed=Math.random();
+/** A distinct creative per slot, with a reserved independent fallback. */
 export function AdSlot({slot,className}:{slot:AdSlotName;className?:string}){
   const units=useAdUnits();
   const {pathname}=useLocation();
   const group=pageGroupOf(pathname);
   const host=useRef<HTMLDivElement>(null);
   const [size,setSize]=useState({width:0,viewport:0});
-  const [pick]=useState(()=>Math.random());
-  const [failed,setFailed]=useState<string|null>(null);
+  const [failed,setFailed]=useState<string[]>([]);
+  useEffect(()=>setFailed([]),[pathname]);
   useLayoutEffect(()=>{
     const el=host.current;if(!el)return;
     const measure=()=>{const style=getComputedStyle(el);const next={width:Math.max(0,el.clientWidth-parseFloat(style.paddingLeft||'0')-parseFloat(style.paddingRight||'0')-18),viewport:window.innerWidth};setSize(old=>old.width===next.width&&old.viewport===next.viewport?old:next);};
     measure();const observer=new ResizeObserver(measure);observer.observe(el);window.addEventListener('resize',measure);
     return ()=>{observer.disconnect();window.removeEventListener('resize',measure);};
   },[]);
-  const footerId=footerBannerReservation(units.filter(u=>!isKnownAdsterraTag(u)||isDirectBanner(u)),group,size.viewport);
-  const matching=units.filter(u=>fitsSlot(u,slot,size.width,size.viewport)&&
-    (u.id===footerId?'site_bottom':assignedBannerSlot(u,group)??slot)===slot);
-  // These exact supplied Adsterra tag families failed in the opaque iframe. Avoid
-  // knowingly showing a blank card; direct execution still requires explicit approval.
-  const eligible=matching.filter(u=>!isKnownAdsterraTag(u)||isDirectBanner(u));
-  useEffect(()=>{matching.filter(u=>isKnownAdsterraTag(u)&&!isDirectBanner(u)).forEach(u=>noteAd(u.id,slot,'approval-required'));},[units,slot,size.width,size.viewport,group]);
-  const primary=weightedPick(eligible,pick);
-  const failedPrimary=primary && failed===primary.id+':'+primary.html;
-  const unit=primary&&failedPrimary?bannerFallback(eligible,primary.id,pick):primary;
-  const fail=()=>{if(primary&&!failedPrimary)setFailed(primary.id+':'+primary.html);};
-  useEffect(()=>{if(failedPrimary&&unit)noteAd(unit.id,slot,'fallback');},[failedPrimary,unit,slot]);
+  const plan=useMemo(()=>planBanners(units,group,size.viewport,bannerPlanSeed),[units,group,size.viewport]);
+  const candidates=(plan[slot]??[]).filter(u=>fitsSlot(u,slot,size.width,size.viewport));
+  const identity=(u:AdUnit)=>u.id+':'+u.html;
+  const unit=candidates.find(u=>!failed.includes(identity(u)));
+  const fail=()=>{if(unit)setFailed(old=>old.includes(identity(unit))?old:[...old,identity(unit)]);};
+  const primary=plan[slot]?.[0];
+  useEffect(()=>{if(unit&&primary&&unit.id!==primary.id)noteAd(unit.id,slot,'fallback');},[primary,unit,slot]);
   return <div ref={host} data-ad-slot-wrapper="" className={cn('w-full min-w-0',className)}>
     {unit&&(isDirectBanner(unit)?<DirectBanner key={unit.id+':'+unit.html} unit={unit} slot={slot} onFailure={fail}/>: (
       <IsolatedBanner key={unit.id+':'+unit.html} unit={unit} slot={slot} onFailure={fail}/>))}
@@ -376,10 +373,17 @@ export function AdsRuntime() {
   const {status}=useAuth();
   const [onClickOff,setOnClickOff]=useState(()=>{try{return sessionStorage.getItem('rn_onclick_consent')==='no';}catch{return false;}});
   const turnOffOnClick=()=>{setOnClickOff(true);try{sessionStorage.setItem('rn_onclick_consent','no');}catch{/* optional */}};
-  const onClickAvailable=status==='anonymous'&&units.some(eligibleOnClickLink);
-  // A configured direct OnClick takes priority; never mix vendor popup scripts.
-  const config=site.data?.ads;
-  const directConfigured=!!config&&config.units.some(u=>isAllowedAdUnit(config,u)&&eligibleOnClickLink(u));
+  const onClickAvailable=status==='anonymous'&&units.some(u=>eligibleOnClickLink(u)||(u.format==='script'&&adKind(u)==='popunder'));
+  // Choose one delivery mode for a document. Never stack popup networks.
+  const selected=useRef<{path:string;id:string}|null>(null);
+  const choices=units.filter(u=>u.format==='script'||eligibleOnClickLink(u));
+  // Opting out excludes all network scripts (MultiTag can also open popups).
+  const allowedChoices=onClickOff?[]:choices;
+  const previous=selected.current?.path===pathname?allowedChoices.find(u=>u.id===selected.current?.id):undefined;
+  const delivery=previous??chooseNetworkUnit(allowedChoices.filter(u=>eligibleOnClickLink(u)||
+    (networkDue()&&isDue(u,pathname)&&(adKind(u)!=='popunder'||onClickDue()))),lastSeen,networkPick);
+  if(delivery)selected.current={path:pathname,id:delivery.id};
+  const directConfigured=!!delivery&&eligibleOnClickLink(delivery);
   const [popup, setPopup] = useState<{ unit: AdUnit; path: string } | null>(null);
   const adsenseAllowed = enabled && group === 'comic' && !!adsenseClient && site.data?.ads.providerEnabled?.adsense !== false;
 
@@ -390,27 +394,27 @@ export function AdsRuntime() {
     const injected = Array.from(document.querySelectorAll<HTMLElement>('[data-rn-ad]'));
     const hasAdsense = !!document.querySelector(`script[src^="${ADSENSE_SRC}"]`);
     if ((window.__rnAdPath && window.__rnAdPath !== pathname) ||
-        (directConfigured && injected.length>0) ||
+        (injected.length>0 && (onClickOff || !delivery || injected.some(el=>el.dataset.rnAd!==delivery.id))) ||
         (window.__rnAdScripts && (!enabled || injected.some(el => !units.some(u => u.id === el.dataset.rnAd && u.format === 'script' && u.html === el.dataset.rnAdContent)) || loadedDirectBanners().some(([id, html]) => !units.some(u => u.id === id && isDirectBanner(u) && u.html === html)))) ||
         (hasAdsense && !adsenseAllowed)) {
       window.location.reload();
       return;
     }
-    if (!enabled || directConfigured) return;
+    if (!enabled || onClickOff || !delivery || delivery.format!=='script') return;
     // Cap injection, not the vendor's actual popup count or paid impressions.
     if(injected.length||!networkDue())return;
-    const candidate=weightedPick(units.filter(u=>u.format==='script'&&targets(u,group)&&isDue(u,pathname)),networkPick);
-    if(!candidate)return;
+    const candidate=delivery;
+    if(!isDue(candidate,pathname)||(adKind(candidate)==='popunder'&&!onClickDue()))return;
     const timer=window.setTimeout(()=>{
-      if(document.querySelector('[data-rn-ad]')||!isDue(candidate,pathname)||!networkDue())return;
-      if(injectScriptUnit(candidate)){recordShown(candidate,pathname);recordNetwork(candidate);}
+      if(document.querySelector('[data-rn-ad]')||!isDue(candidate,pathname)||!networkDue()||(adKind(candidate)==='popunder'&&!onClickDue()))return;
+      if(injectScriptUnit(candidate)){recordShown(candidate,pathname);recordNetwork(candidate);if(adKind(candidate)==='popunder')markOnClick();}
     },Math.max(0,candidate.delaySeconds??0)*1000);
     return ()=>clearTimeout(timer);
-  }, [units, group, pathname, enabled, adsenseAllowed, networkPick,directConfigured]);
+  }, [units, pathname, enabled, adsenseAllowed, delivery,onClickOff]);
 
   // Pop-up: first eligible unit for this page, after its delay.
   useEffect(() => {
-    if (isAdFreePath(pathname) || directConfigured || units.some(u=>u.format==='script')) return;
+    if (isAdFreePath(pathname) || onClickOff || delivery) return;
     const unit = units.find((u) => u.format === 'popup' && targets(u, group) && isDue(u, pathname));
     if (!unit) return;
     const id = setTimeout(() => {
@@ -418,7 +422,7 @@ export function AdsRuntime() {
       setPopup({ unit, path: pathname });
     }, Math.max(0, unit.delaySeconds ?? 0) * 1000);
     return () => clearTimeout(id);
-  }, [units, group, pathname,directConfigured]);
+  }, [units, group, pathname,delivery,onClickOff]);
 
   // Only explicitly enabled Auto ads on classified, non-mature comic pages.
   useEffect(() => {
@@ -427,21 +431,21 @@ export function AdsRuntime() {
 
   // Default-on with visible notice and opt-out; provider-supported URL only.
   useEffect(()=>{
-    if(!onClickAvailable||onClickOff||isAdFreePath(pathname))return;
-    const candidates=units.filter(eligibleOnClickLink);
+    if(!onClickAvailable||onClickOff||!directConfigured||!delivery||isAdFreePath(pathname))return;
+    const candidate=delivery;
     const shownAt=Date.now();
     const onClick=(e:MouseEvent)=>{
       if(!e.isTrusted||e.defaultPrevented||e.button!==0||e.ctrlKey||e.metaKey||e.shiftKey||e.altKey||!onClickDue())return;
       if(!(e.target instanceof Element)||!isPublicContentClick(e.target))return;
-      const candidate=weightedPick(candidates.filter(u=>Date.now()-shownAt>=Math.max(0,u.delaySeconds??0)*1000),networkPick);
-      if(!candidate)return;
+      if(document.querySelector('[data-rn-ad]')||Date.now()-shownAt<Math.max(0,candidate.delaySeconds??0)*1000)return;
       // No preventDefault, simulated clicks or retries. Browser decides tab focus.
       markOnClick();
+      recordShown(candidate,pathname);
       window.open(candidate.targetUrl!,'_blank','noopener,noreferrer');
     };
     document.addEventListener('click',onClick,true);
     return ()=>document.removeEventListener('click',onClick,true);
-  },[units,pathname,onClickAvailable,onClickOff,networkPick]);
+  },[pathname,onClickAvailable,onClickOff,directConfigured,delivery]);
 
   return <>
     {onClickAvailable&&!onClickOff&&<p data-ad="" className="text-xs leading-relaxed text-muted">Khi điều hướng, có thể mở tab quảng cáo (tối đa 1 lần / 2 phút).{' '}<button type="button" onClick={turnOffOnClick} className="underline underline-offset-2">Tắt mở tab</button></p>}
