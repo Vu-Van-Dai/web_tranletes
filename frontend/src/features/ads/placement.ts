@@ -60,7 +60,7 @@ export function standaloneLink(html:string|null):{href:string;label:string}|null
 export type AdDiagnosticState='loading'|'element'|'no-element'|'script-error'|'injected'|'invalid-tag'|'duplicate'|'sync-limit'|'fallback'|'approval-required';
 type State=AdDiagnosticState;
 export const diagnosticLabel:Record<State,string> = {
-  loading:'Đang nạp',element:'Có phần tử quảng cáo (chưa xác nhận impression)', 'no-element':'Không phát hiện nội dung', 'script-error':'Lỗi tải script',injected:'Đã nạp mã mạng', 'invalid-tag':'Tag không tương thích',duplicate:'Trùng mã hoặc container', 'sync-limit':'Đã có banner đồng bộ trong tài liệu',fallback:'Đang dùng ảnh dự phòng','approval-required':'Tag Adsterra cần xác minh chế độ trực tiếp hoặc mã tương thích iframe'
+  loading:'Đang nạp',element:'Có phần tử quảng cáo (chưa xác nhận impression)', 'no-element':'Không phát hiện nội dung', 'script-error':'Lỗi tải script',injected:'Đã nạp mã mạng', 'invalid-tag':'Tag không tương thích',duplicate:'Trùng mã hoặc container', 'sync-limit':'Đã có banner đồng bộ trong tài liệu',fallback:'Đang dùng quảng cáo dự phòng','approval-required':'Tag Adsterra cần xác minh chế độ trực tiếp hoặc mã tương thích iframe'
 };
 /** Single external script from the provider; preserve all supplied attributes. */
 export function singleNetworkScript(html:string|null):HTMLScriptElement|null {
@@ -110,6 +110,13 @@ export function suggestedPopunderTest(u:AdUnit):AdUnit {
 // not another paid network request. Never retry a failed script to generate impressions.
 export function imageFallback(units:AdUnit[],failedId:string,seed:number):AdUnit|undefined {
   return weightedPick(units.filter(u=>u.id!==failedId&&u.provider==='direct'&&!!u.imageUrl&&!!u.targetUrl&&!u.html),seed);
+}
+/** The caller makes at most one fallback attempt per primary creative. */
+export function bannerFallback(eligible:AdUnit[], failedId:string, seed:number):AdUnit|undefined {
+  const failed = eligible.find(u => u.id === failedId);
+  const alternatives = eligible.filter(u => u.id !== failedId && u.provider !== failed?.provider &&
+    (!u.html || u.html !== failed?.html));
+  return weightedPick(alternatives, seed) ?? imageFallback(eligible, failedId, seed);
 }
 export type AdDiagnostic={state:State;at:number;slot:string};
 const KEY='rn_ad_diagnostics_v1';

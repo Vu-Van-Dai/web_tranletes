@@ -23,7 +23,7 @@ describe('ad placement', () => {
     expect(isAdFreePath('/')).toBe(false);
     expect(isAdFreePath('/doc/123')).toBe(false);
     expect(isAdFreePath('/quan-tri-vien')).toBe(false);
-    for (const path of ['/dang-nhap', '/dang-ky', '/tu-truyen', '/lien-he', '/tim-kiem']) expect(isAdFreePath(path)).toBe(true);
+    for (const path of ['/dang-nhap', '/dang-ky', '/tu-truyen', '/lien-he']) expect(isAdFreePath(path)).toBe(true);
   });
 
   it('maps public URLs to page groups', () => {
@@ -31,6 +31,7 @@ describe('ad placement', () => {
     expect(pageGroupOf('/doc/0193')).toBe('reader');
     expect(pageGroupOf('/truyen/0193/ten-truyen')).toBe('comic');
     expect(pageGroupOf('/truyen')).toBe('browse');
+    expect(isAdFreePath('/tim-kiem')).toBe(false);
     expect(pageGroupOf('/tim-kiem')).toBe('browse');
     expect(pageGroupOf('/the-loai/hai-huoc')).toBe('browse');
     expect(pageGroupOf('/nhom-dich/rong-nho')).toBe('house');
