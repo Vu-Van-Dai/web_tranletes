@@ -7,7 +7,7 @@ import type { AdPage, AdSlot as AdSlotName, AdUnit } from '@/types/api';
 import { isAllowedAdUnit, isDirectBanner, requiresDirectScript } from './providers';
 import { hasVisibleCreative, loadedDirectBanners, mountDirectBanner } from './directCreative';
 import { useAuth } from '@/features/auth/AuthProvider';
-import { dimensions, fitsSlot, weightedPick, standaloneLink, noteAd, bannerFallback, adKind, singleNetworkScript, adsterraScriptPosition, assignedBannerSlot, isKnownAdsterraTag, eligibleOnClickLink, isPublicContentClick, ONCLICK_MINUTES } from './placement';
+import { dimensions, fitsSlot, weightedPick, standaloneLink, noteAd, bannerFallback, adKind, singleNetworkScript, adsterraScriptPosition, assignedBannerSlot, footerBannerReservation, isKnownAdsterraTag, eligibleOnClickLink, isPublicContentClick, ONCLICK_MINUTES } from './placement';
 import { comicRoute, chapterRoute } from '@/app/paths';
 import { cn } from '@/utils/format';
 
@@ -255,7 +255,9 @@ export function AdSlot({slot,className}:{slot:AdSlotName;className?:string}){
     measure();const observer=new ResizeObserver(measure);observer.observe(el);window.addEventListener('resize',measure);
     return ()=>{observer.disconnect();window.removeEventListener('resize',measure);};
   },[]);
-  const matching=units.filter(u=>fitsSlot(u,slot,size.width,size.viewport)&&(assignedBannerSlot(u,group)??slot)===slot);
+  const footerId=footerBannerReservation(units.filter(u=>!isKnownAdsterraTag(u)||isDirectBanner(u)),group,size.viewport);
+  const matching=units.filter(u=>fitsSlot(u,slot,size.width,size.viewport)&&
+    (u.id===footerId?'site_bottom':assignedBannerSlot(u,group)??slot)===slot);
   // These exact supplied Adsterra tag families failed in the opaque iframe. Avoid
   // knowingly showing a blank card; direct execution still requires explicit approval.
   const eligible=matching.filter(u=>!isKnownAdsterraTag(u)||isDirectBanner(u));

@@ -4,8 +4,13 @@ export function dimensions(u:AdUnit):{width:number;height:number}|null {
   const h=u.html??'',w=h.match(/['"]?width['"]?\s*:\s*(\d{2,4})\b/i),y=h.match(/['"]?height['"]?\s*:\s*(\d{2,4})\b/i);
   return w&&y?{width:Number(w[1]),height:Number(y[1])}:null;
 }
+/** Text-only sponsored links are not visual banner inventory. */
+export function isVisualBanner(u:AdUnit):boolean {
+  return u.format==='banner'&&adKind(u)!=='smartlink'&&
+    (!!(u.imageUrl&&u.targetUrl)||!!(u.html&&!standaloneLink(u.html)));
+}
 export function fitsSlot(u:AdUnit,slot:AdSlot,width:number,viewport:number):boolean {
-  if(!u.enabled||u.format!=='banner'||!u.slots?.includes(slot)||width<=0)return false;
+  if(!u.enabled||!isVisualBanner(u)||!u.slots?.includes(slot)||width<=0)return false;
   if(u.device==='mobile'&&viewport>=768||u.device==='desktop'&&viewport<768)return false;
   const d=dimensions(u);
   if(slot==='side_left'||slot==='side_right')return viewport>=1700&&!!d&&d.width<=width&&d.height<=600;
@@ -22,6 +27,19 @@ const slotOrder:Record<AdPage,AdSlot[]>={
 export function assignedBannerSlot(u:AdUnit,page:AdPage):AdSlot|undefined {
   if(u.format!=='banner'||!u.html||!/<script\b/i.test(u.html))return undefined;
   return slotOrder[page].find(slot=>u.slots?.includes(slot));
+}
+/** Reserve a distinct footer tag when multiple tags otherwise compete for
+ * the same earlier slot. Only use configured positions, never duplicate a tag. */
+export function footerBannerReservation(units:AdUnit[],page:AdPage,viewport:number):string|undefined {
+  if(!slotOrder[page].includes('site_bottom')||viewport<=0)return undefined;
+  const candidates=units.filter(u=>u.enabled&&isVisualBanner(u)&&!!u.html&&/<script\b/i.test(u.html)&&
+    !(u.device==='mobile'&&viewport>=768)&&!(u.device==='desktop'&&viewport<768));
+  const unique=candidates.filter((u,i)=>candidates.findIndex(v=>v.html===u.html)===i);
+  if(unique.some(u=>assignedBannerSlot(u,page)==='site_bottom'))return undefined;
+  return unique.find(u=>u.slots?.includes('site_bottom')&&
+    (dimensions(u)?.width??0)<=Math.max(0,viewport-50)&&
+    unique.some(v=>v.id!==u.id&&assignedBannerSlot(v,page)===assignedBannerSlot(u,page)&&
+      (dimensions(v)?.width??0)<=Math.max(0,viewport-50)))?.id;
 }
 export function isKnownAdsterraTag(u:AdUnit):boolean {
   return u.provider==='adsterra'&&u.format==='banner'&&/https:\/\/bauval\.org\/(?:21|22)\/[a-f0-9]{32}/i.test(u.html??'');
@@ -139,7 +157,7 @@ export function suggestedAdsterraLayout(u:AdUnit):AdUnit{
     if(c)return {...u,slots:[c.slot],device:c.device,width:d.width,height:d.height};
   }
   if(u.format==='banner'&&/native/i.test(u.name))return {...u,slots:['home_middle']};
-  if(u.format==='banner'&&/smartlink/i.test(u.name))return {...u,slots:['site_bottom']};
+  if(u.format==='banner'&&/smartlink/i.test(u.name))return {...u,slots:[]};
   return u;
 }
 
