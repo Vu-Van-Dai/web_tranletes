@@ -8,7 +8,7 @@ import { ApiError } from '@/services/http';
 import type { AdFormat, AdPage, AdSlot, AdUnit, AdsConfig, AdProvider, AdProviderReport } from '@/types/api';
 
 import { providerLabels, providerOf } from '@/features/ads/providers';
-import { dimensions, readDiagnostics, suggestedAdsterraLayout, adKind, suggestedPopunderTest, diagnosticLabel, adsterraScriptPosition, eligibleOnClickLink, isKnownAdsterraTag, suggestedHilltopLayout } from '@/features/ads/placement';
+import { dimensions, readDiagnostics, suggestedAdsterraLayout, adKind, suggestedPopunderTest, diagnosticLabel, adsterraScriptPosition, eligibleOnClickLink, isKnownAdsterraTag, suggestedHilltopLayout, suggestedMultiProviderLayout } from '@/features/ads/placement';
 import { directTagKind } from '@/features/ads/directCreative';
 
 const formatLabel: Record<AdFormat, string> = {
@@ -135,11 +135,12 @@ export function AdminAdsPage() {
           {config.schemaVersion === 2 ? <ProviderSettings config={config} update={update} /> : <p className="card p-4 text-sm text-muted">Quản lý theo nhà cung cấp sẽ khả dụng sau khi backend được cập nhật.</p>}
           <section className="card space-y-2 p-4">
             <h2 className="font-semibold">Bố cục và chẩn đoán</h2>
-            <p className="text-sm text-muted">Sắp xếp Adsterra theo kích thước tag, giữ trạng thái bật và phê duyệt. Kiểm tra lại rồi lưu. Chuẩn bị thử Popunder sẽ tắt Smartlink và Social Bar/In-Page được nhận diện trong bản nháp, không tự bật hoặc phê duyệt Popunder. Bố trí HilltopAds + Adsterra đặt banner Hilltop ở đầu, Native ở giữa, tắt Smartlink và các script popup cạnh tranh, giữ trạng thái bật/phê duyệt của banner và Direct URL. OnClick dùng giới hạn chung 2 phút. Smartlink không được dùng làm banner. Để có banner cuối trang, chọn vị trí Mọi trang – cuối trang cho ít nhất một mã banner độc lập. Chẩn đoán chỉ của trình duyệt hiện tại, không phải lượt hiển thị tính tiền.</p>
+            <p className="text-sm text-muted">Sắp xếp Adsterra theo kích thước tag, giữ trạng thái bật và phê duyệt. Kiểm tra lại rồi lưu. Chuẩn bị thử Popunder sẽ tắt Smartlink và Social Bar/In-Page được nhận diện trong bản nháp, không tự bật hoặc phê duyệt Popunder. Bố trí HilltopAds + Adsterra đặt banner Hilltop ở đầu, Native ở giữa, tắt Smartlink và các script popup cạnh tranh, giữ trạng thái bật/phê duyệt của banner và Direct URL. Phân bổ banner đa nhà cung cấp mở rộng vị trí ứng viên cho các banner tương thích, không tự bật hoặc phê duyệt mã. Runtime dành mỗi mã cho một vị trí, ưu tiên mã độc lập và thử tối đa một mã dự phòng. Các script mạng và OnClick được chọn luân phiên theo lần thử gần nhất, không chạy đồng thời. OnClick dùng giới hạn chung 2 phút. Smartlink không được dùng làm banner. Để có banner cuối trang, chọn vị trí Mọi trang – cuối trang cho ít nhất một mã banner độc lập. Chẩn đoán chỉ của trình duyệt hiện tại, không phải lượt hiển thị tính tiền.</p>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={()=>update({...config,units:config.units.map(suggestedAdsterraLayout)})}>Sắp xếp Adsterra theo kích thước</Button>
               <Button variant="outline" onClick={()=>update({...config,units:config.units.map(suggestedPopunderTest)})}>Chuẩn bị thử Popunder</Button>
-              <Button variant="outline" onClick={()=>update({...config,units:config.units.map(suggestedHilltopLayout)})}>Bố trí HilltopAds + Adsterra (2 phút)</Button>
+              <Button variant="outline" onClick={()=>update({...config,units:config.units.map(suggestedHilltopLayout)})}>Bố trí HilltopAds + Adsterra (thử riêng)</Button>
+              <Button variant="outline" onClick={()=>update({...config,units:config.units.map(suggestedMultiProviderLayout)})}>Phân bổ banner đa nhà cung cấp</Button>
               <Button variant="outline" onClick={()=>setDiagnostics(readDiagnostics())}>Đọc lại chẩn đoán cục bộ</Button>
             </div>
           </section>
