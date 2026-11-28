@@ -220,7 +220,7 @@ function AdEditor({ unit, providerSettings, onCancel, onSave }: { unit: AdUnit; 
 
   return (
     <Modal open size="lg" onClose={onCancel} title={unit.name ? `Sửa: ${unit.name}` : 'Thêm quảng cáo'}
-      footer={<><Button variant="outline" onClick={onCancel}>Huỷ</Button><Button disabled={!u.name.trim() || upload.isPending || (adcashBanner && !/^\\d{1,20}$/.test(u.placementId??''))} onClick={finish} data-testid="ad-editor-done">Xong</Button></>}>
+      footer={<><Button variant="outline" onClick={onCancel}>Huỷ</Button><Button disabled={!u.name.trim() || upload.isPending || (adcashBanner && !/^\d{1,20}$/.test(u.placementId??''))} onClick={finish} data-testid="ad-editor-done">Xong</Button></>}>
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Tên (chỉ quản trị thấy)" required>{(id) => <Input id={id} value={u.name} maxLength={100} onChange={(e) => set({ name: e.target.value })} data-testid="ad-name" />}</Field>
@@ -235,7 +235,7 @@ function AdEditor({ unit, providerSettings, onCancel, onSave }: { unit: AdUnit; 
         {providerSettings && <Field label="Nhà cung cấp">{(id) => <Select id={id} value={providerOf(u)} onChange={e => {
           const provider=e.target.value as AdProvider;
           set({provider,format:provider==='adcash'?'banner':u.format,scriptApproved:false,
-            placementId:provider==='adcash'&&/^\\d{1,20}$/.test(u.placementId??'')?u.placementId:null,
+            placementId:provider==='adcash'&&/^\d{1,20}$/.test(u.placementId??'')?u.placementId:null,
             width:provider==='adcash'?300:u.width,height:provider==='adcash'?250:u.height,
             slots:provider==='adcash'?['reader_bottom']:u.slots});
         }}>{Object.entries(providerLabels).filter(([p]) => p !== 'adsense').map(([p,label]) => <option key={p} value={p}>{label}</option>)}</Select>}</Field>}
@@ -310,7 +310,7 @@ function AdEditor({ unit, providerSettings, onCancel, onSave }: { unit: AdUnit; 
         )}
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Placement ID (tùy chọn)">{id=><Input id={id} maxLength={80} value={u.placementId??''} onChange={e=>set({placementId:e.target.value||null})}/>}</Field>
+          {u.provider!=='adcash'&&<Field label="Placement ID (tùy chọn)">{id=><Input id={id} maxLength={80} value={u.placementId??''} onChange={e=>set({placementId:e.target.value||null})}/>}</Field>}
           <Field label="Trọng số luân phiên (1–100)">{id=><Input id={id} type="number" min={1} max={100} value={u.weight??1} onChange={e=>set({weight:Number(e.target.value)})}/>}</Field>
           {u.format==='banner' && <>
             <Field label="Thiết bị">{id=><Select id={id} value={u.device??'all'} onChange={e=>set({device:e.target.value as 'all'|'desktop'|'mobile'})}><option value="all">Mọi thiết bị</option><option value="desktop">Máy tính</option><option value="mobile">Điện thoại</option></Select>}</Field>
