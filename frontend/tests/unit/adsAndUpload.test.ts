@@ -238,3 +238,24 @@ describe('cross-provider banner fallback',()=>{
     expect(bannerFallback([ad],ad.id,0)).toBeUndefined();
   });
 });
+
+import { isVisualBanner, footerBannerReservation } from '@/features/ads/placement';
+describe('visual footer banner inventory',()=>{
+  const banner={id:'a',name:'Native Banner',provider:'adsterra',format:'banner',enabled:true,html:'<script src="https://example.com/a.js"></script>',slots:['home_middle','site_bottom']} as AdUnit;
+  const link={...banner,id:'link',name:'Adsterra Smartlink',html:'<a href="https://example.com">Ad</a>',slots:['site_bottom']} as AdUnit;
+  it('does not allocate Smartlink or plain hyperlinks to banner slots',()=>{
+    expect(isVisualBanner(link)).toBe(false);
+    expect(fitsSlot(link,'site_bottom',1000,1280)).toBe(false);
+    expect(isVisualBanner({...link,provider:'custom',name:'Text link'})).toBe(false);
+    expect(fitsSlot(banner,'site_bottom',1000,1280)).toBe(true);
+    expect(suggestedAdsterraLayout(link).slots).toEqual([]);
+  });
+  it('reserves a separate footer tag only when an earlier slot has spare inventory',()=>{
+    const other={...banner,id:'b',name:'Hilltop Banner',provider:'hilltopads',html:'<script src="https://example.com/b.js"></script>'} as AdUnit;
+    expect(footerBannerReservation([banner,link],'home',1280)).toBeUndefined();
+    expect(footerBannerReservation([banner,{...other,html:banner.html}],'home',1280)).toBeUndefined();
+    expect(footerBannerReservation([banner,other],'home',1280)).toBe('b');
+    expect(footerBannerReservation([banner,{...other,slots:['site_bottom']}],'home',1280)).toBeUndefined();
+    expect(footerBannerReservation([banner,other],'reader',1280)).toBeUndefined();
+  });
+});
