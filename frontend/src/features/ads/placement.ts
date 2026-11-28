@@ -1,5 +1,5 @@
 import type { AdPage, AdSlot, AdUnit } from '@/types/api';
-import { isDirectBanner } from './providers';
+import { isAdcashBanner, isDirectBanner } from './providers';
 import { parseDirectTag } from './directCreative';
 export function dimensions(u:AdUnit):{width:number;height:number}|null {
   if(u.width&&u.height)return {width:u.width,height:u.height};
@@ -9,7 +9,7 @@ export function dimensions(u:AdUnit):{width:number;height:number}|null {
 /** Text-only sponsored links are not visual banner inventory. */
 export function isVisualBanner(u:AdUnit):boolean {
   return u.format==='banner'&&adKind(u)!=='smartlink'&&
-    (!!(u.imageUrl&&u.targetUrl)||!!(u.html&&!standaloneLink(u.html)));
+    (isAdcashBanner(u)||!!(u.imageUrl&&u.targetUrl)||!!(u.html&&!standaloneLink(u.html)));
 }
 export function fitsSlot(u:AdUnit,slot:AdSlot,width:number,viewport:number):boolean {
   if(!u.enabled||!isVisualBanner(u)||!u.slots?.includes(slot)||width<=0)return false;
@@ -79,10 +79,10 @@ export function standaloneLink(html:string|null):{href:string;label:string}|null
   if([...a.attributes].some(x=>!['href','target','rel','title','class'].includes(x.name)))return null;
   return {href:a.href,label:a.textContent?.trim()||'Xem quảng cáo'};
 }
-export type AdDiagnosticState='loading'|'element'|'no-element'|'script-error'|'injected'|'invalid-tag'|'duplicate'|'sync-limit'|'fallback'|'approval-required';
+export type AdDiagnosticState='loading'|'element'|'no-element'|'script-error'|'injected'|'invalid-tag'|'duplicate'|'sync-limit'|'fallback'|'approval-required'|'library-error'|'zone-error';
 type State=AdDiagnosticState;
 export const diagnosticLabel:Record<State,string> = {
-  loading:'Đang nạp',element:'Có phần tử quảng cáo (chưa xác nhận impression)', 'no-element':'Không phát hiện nội dung', 'script-error':'Lỗi tải script',injected:'Đã nạp mã mạng', 'invalid-tag':'Tag không tương thích',duplicate:'Trùng mã hoặc container', 'sync-limit':'Đã có banner đồng bộ trong tài liệu',fallback:'Đang dùng quảng cáo dự phòng','approval-required':'Tag Adsterra cần xác minh chế độ trực tiếp hoặc mã tương thích iframe'
+  loading:'Đang nạp',element:'Có phần tử quảng cáo (chưa xác nhận impression)', 'no-element':'Không phát hiện nội dung', 'script-error':'Lỗi tải script',injected:'Đã nạp mã mạng', 'invalid-tag':'Tag không tương thích',duplicate:'Trùng mã hoặc container', 'sync-limit':'Đã có banner đồng bộ trong tài liệu',fallback:'Đang dùng quảng cáo dự phòng','approval-required':'Tag Adsterra cần xác minh chế độ trực tiếp hoặc mã tương thích iframe','library-error':'Không tải được thư viện Adcash','zone-error':'Không khởi chạy được Adcash Display Zone'
 };
 /** Single external script from the provider; preserve all supplied attributes. */
 export function singleNetworkScript(html:string|null):HTMLScriptElement|null {
@@ -200,7 +200,9 @@ export function planBanners(units:AdUnit[],page:AdPage,viewport:number,seed:numb
     const allowed=slots.filter(s=>fitsSlot(u,s,width(s),viewport));
     if(!allowed.length)return [];
     let keys=[u.id,...(u.html?['html:'+u.html]:[])],sync=false;
-    if(isDirectBanner(u)){
+    if(isAdcashBanner(u)){
+      keys.push('adcash-zone:'+u.placementId);
+    }else if(isDirectBanner(u)){
       try{const tag=parseDirectTag(u.html!,u.provider);sync=tag.sync;keys=[...keys,...tag.urls.map(v=>'src:'+v),...[...tag.template.content.querySelectorAll('[id]')].map(v=>'container:'+v.id)];}catch{return [];}
     }
     return [{u,allowed,keys,sync}];
