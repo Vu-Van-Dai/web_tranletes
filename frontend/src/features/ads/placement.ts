@@ -36,7 +36,9 @@ export function footerBannerReservation(units:AdUnit[],page:AdPage,viewport:numb
     !(u.device==='mobile'&&viewport>=768)&&!(u.device==='desktop'&&viewport<768));
   const unique=candidates.filter((u,i)=>candidates.findIndex(v=>v.html===u.html)===i);
   if(unique.some(u=>assignedBannerSlot(u,page)==='site_bottom'))return undefined;
-  return unique.find(u=>u.slots?.includes('site_bottom')&&
+  // Keep the working Native Banner in its earlier slot whenever possible.
+  const ordered=[...unique].sort((a,b)=>Number(/native/i.test(a.name))-Number(/native/i.test(b.name)));
+  return ordered.find(u=>!!assignedBannerSlot(u,page)&&u.slots?.includes('site_bottom')&&
     (dimensions(u)?.width??0)<=Math.max(0,viewport-50)&&
     unique.some(v=>v.id!==u.id&&assignedBannerSlot(v,page)===assignedBannerSlot(u,page)&&
       (dimensions(v)?.width??0)<=Math.max(0,viewport-50)))?.id;

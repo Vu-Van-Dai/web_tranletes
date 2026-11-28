@@ -251,10 +251,10 @@ describe('visual footer banner inventory',()=>{
     expect(suggestedAdsterraLayout(link).slots).toEqual([]);
   });
   it('reserves a separate footer tag only when an earlier slot has spare inventory',()=>{
-    const other={...banner,id:'b',provider:'hilltopads',html:'<script src="https://example.com/b.js"></script>'} as AdUnit;
+    const other={...banner,id:'b',name:'Hilltop Banner',provider:'hilltopads',html:'<script src="https://example.com/b.js"></script>'} as AdUnit;
     expect(footerBannerReservation([banner,link],'home',1280)).toBeUndefined();
     expect(footerBannerReservation([banner,{...other,html:banner.html}],'home',1280)).toBeUndefined();
-    expect(footerBannerReservation([banner,other],'home',1280)).toBe('a');
+    expect(footerBannerReservation([banner,other],'home',1280)).toBe('b');
     expect(footerBannerReservation([banner,{...other,slots:['site_bottom']}],'home',1280)).toBeUndefined();
     expect(footerBannerReservation([banner,other],'reader',1280)).toBeUndefined();
   });
