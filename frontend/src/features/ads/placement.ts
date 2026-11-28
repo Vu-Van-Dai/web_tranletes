@@ -142,6 +142,11 @@ export function suggestedHilltopLayout(u:AdUnit):AdUnit {
   const kind=adKind(u);
   if(u.provider==='adsterra'&&(kind==='smartlink'||kind==='popunder'||kind==='socialbar'))return {...u,enabled:false};
   if(u.provider==='adsterra'&&u.format==='banner'&&/native/i.test(u.name))return {...u,slots:['home_middle','comic_chapters','reader_bottom']};
+  // Keep the top slot reserved for distinct Hilltop tags in this preset.
+  if(u.provider==='adsterra'&&u.format==='banner'&&u.slots?.includes('site_top')){
+    const slots=u.slots.filter(slot=>slot!=='site_top');
+    return {...u,slots,enabled:slots.length>0&&u.enabled};
+  }
   if(u.provider!=='hilltopads')return u;
   if(eligibleOnClickLink(u))return {...u,pages:[...PUBLIC_AD_PAGES],delaySeconds:0,frequencyMinutes:ONCLICK_MINUTES,trigger:'content'};
   if(u.format==='banner'){

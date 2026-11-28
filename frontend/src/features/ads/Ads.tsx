@@ -342,7 +342,8 @@ export function AdsRuntime() {
   const turnOffOnClick=()=>{setOnClickOff(true);try{sessionStorage.setItem('rn_onclick_consent','no');}catch{/* optional */}};
   const onClickAvailable=status==='anonymous'&&units.some(eligibleOnClickLink);
   // A configured direct OnClick takes priority; never mix vendor popup scripts.
-  const directConfigured=site.data?.ads?.units.some(u=>isAllowedAdUnit(site.data!.ads,u)&&eligibleOnClickLink(u))===true;
+  const config=site.data?.ads;
+  const directConfigured=!!config&&config.units.some(u=>isAllowedAdUnit(config,u)&&eligibleOnClickLink(u));
   const [popup, setPopup] = useState<{ unit: AdUnit; path: string } | null>(null);
   const adsenseAllowed = enabled && group === 'comic' && !!adsenseClient && site.data?.ads.providerEnabled?.adsense !== false;
 
@@ -353,6 +354,7 @@ export function AdsRuntime() {
     const injected = Array.from(document.querySelectorAll<HTMLElement>('[data-rn-ad]'));
     const hasAdsense = !!document.querySelector(`script[src^="${ADSENSE_SRC}"]`);
     if ((window.__rnAdPath && window.__rnAdPath !== pathname) ||
+        (directConfigured && injected.length>0) ||
         (window.__rnAdScripts && (!enabled || injected.some(el => !units.some(u => u.id === el.dataset.rnAd && u.format === 'script' && u.html === el.dataset.rnAdContent)) || loadedDirectBanners().some(([id, html]) => !units.some(u => u.id === id && isDirectBanner(u) && u.html === html)))) ||
         (hasAdsense && !adsenseAllowed)) {
       window.location.reload();

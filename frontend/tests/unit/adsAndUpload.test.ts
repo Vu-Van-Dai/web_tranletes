@@ -222,6 +222,7 @@ describe('HilltopAds home layout preset',()=>{
     expect(suggestedHilltopLayout({...h,provider:'adsterra',name:'Smartlink',enabled:true}).enabled).toBe(false);
     expect(suggestedHilltopLayout({...h,provider:'adsterra',format:'script',name:'Popunder',enabled:true}).enabled).toBe(false);
     expect(suggestedHilltopLayout({...h,format:'newtab',targetUrl:'https://example.com/official',name:'OnClick'}).frequencyMinutes).toBe(ONCLICK_MINUTES);
+    expect(suggestedHilltopLayout({...h,provider:'adsterra',name:'Banner 728x90',slots:['site_top'],enabled:true}).enabled).toBe(false);
     expect(ONCLICK_MINUTES).toBe(2);
   });
 });
