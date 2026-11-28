@@ -194,7 +194,7 @@ export function planBanners(units:AdUnit[],page:AdPage,viewport:number,seed:numb
   const result:Partial<Record<AdSlot,AdUnit[]>>={};
   if(viewport<=0)return result;
   const order=slotOrder[page];
-  const slots=page==='home'?(['home_middle','site_top','home_top','home_extra','site_bottom','side_left','side_right'] as AdSlot[]):order;
+  const slots=page==='home'?(['home_middle','site_top','site_bottom','home_extra','home_top','side_left','side_right'] as AdSlot[]):order;
   const width=(s:AdSlot)=>s==='side_left'||s==='side_right'?162:Math.max(0,Math.min(viewport,s==='reader_top'||s==='reader_bottom'?900:1280)-(viewport<640?50:66));
   const inventory=units.filter(u=>u.enabled&&isVisualBanner(u)&&(!isKnownAdsterraTag(u)||isDirectBanner(u))).flatMap(u=>{
     const allowed=slots.filter(s=>fitsSlot(u,s,width(s),viewport));

@@ -7,7 +7,7 @@ import type { AdPage, AdSlot as AdSlotName, AdUnit } from '@/types/api';
 import { isAllowedAdUnit, isDirectBanner, requiresDirectScript } from './providers';
 import { hasVisibleCreative, loadedDirectBanners, mountDirectBanner } from './directCreative';
 import { useAuth } from '@/features/auth/AuthProvider';
-import { dimensions, fitsSlot, weightedPick, standaloneLink, noteAd, adKind, singleNetworkScript, adsterraScriptPosition, planBanners, chooseNetworkUnit, eligibleOnClickLink, isPublicContentClick, ONCLICK_MINUTES } from './placement';
+import { dimensions, fitsSlot, standaloneLink, noteAd, adKind, singleNetworkScript, adsterraScriptPosition, planBanners, chooseNetworkUnit, eligibleOnClickLink, isPublicContentClick, ONCLICK_MINUTES } from './placement';
 import { comicRoute, chapterRoute } from '@/app/paths';
 import { cn } from '@/utils/format';
 
