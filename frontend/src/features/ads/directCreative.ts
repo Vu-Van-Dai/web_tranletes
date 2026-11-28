@@ -180,7 +180,7 @@ export function mountAdcashBanner(
   const run = async () => {
     const fail = (reason: DirectFailure) => { onFailure?.(reason); return false; };
     if (signal.aborted || !host.isConnected) return fail('cancelled');
-    if (!/^\\d{1,20}$/.test(zoneId) || !renderIn.startsWith('#')) return fail('invalid-tag');
+    if (!/^\d{1,20}$/.test(zoneId) || !renderIn.startsWith('#')) return fail('invalid-tag');
     if (loaded.has(id) || [...document.querySelectorAll<HTMLElement>('[data-rn-adcash-zone]')].some(el => el.dataset.rnAdcashZone === zoneId)) {
       return fail('duplicate');
     }
