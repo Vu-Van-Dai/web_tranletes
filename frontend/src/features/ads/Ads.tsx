@@ -7,7 +7,7 @@ import type { AdPage, AdSlot as AdSlotName, AdUnit } from '@/types/api';
 import { isAllowedAdUnit, isDirectBanner, requiresDirectScript } from './providers';
 import { hasVisibleCreative, loadedDirectBanners, mountDirectBanner } from './directCreative';
 import { useAuth } from '@/features/auth/AuthProvider';
-import { dimensions, fitsSlot, weightedPick, standaloneLink, noteAd, imageFallback, adKind, singleNetworkScript, adsterraScriptPosition, assignedBannerSlot, isKnownAdsterraTag, eligibleOnClickLink, isPublicContentClick, ONCLICK_MINUTES } from './placement';
+import { dimensions, fitsSlot, weightedPick, standaloneLink, noteAd, bannerFallback, adKind, singleNetworkScript, adsterraScriptPosition, assignedBannerSlot, isKnownAdsterraTag, eligibleOnClickLink, isPublicContentClick, ONCLICK_MINUTES } from './placement';
 import { comicRoute, chapterRoute } from '@/app/paths';
 import { cn } from '@/utils/format';
 
@@ -19,7 +19,7 @@ import { cn } from '@/utils/format';
  */
 
 // '/workspace' is where an earlier deployment's redirect sent visitors (still cached by some browsers).
-const AD_FREE_PREFIXES = ['/quan-ly-nhom', '/quan-tri', '/workspace', '/dang-nhap', '/dang-ky', '/doi-mat-khau', '/tu-truyen', '/gioi-thieu', '/lien-he', '/chinh-sach-bao-mat', '/dieu-khoan-su-dung', '/faq', '/tim-kiem'];
+const AD_FREE_PREFIXES = ['/quan-ly-nhom', '/quan-tri', '/workspace', '/dang-nhap', '/dang-ky', '/doi-mat-khau', '/tu-truyen', '/gioi-thieu', '/lien-he', '/chinh-sach-bao-mat', '/dieu-khoan-su-dung', '/faq'];
 
 export const isAdFreePath = (pathname: string) => AD_FREE_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
@@ -140,6 +140,36 @@ function HtmlCreative({ html, title, minHeight = 90, onState }: { html: string; 
   );
 }
 
+/** Rotate only on an explicitly labelled sponsored link. A navigation click
+ * can still use the separately disclosed HilltopAds flow. */
+function SponsoredLink({unit, href, label}: {unit: AdUnit; href: string; label: string}) {
+  const units = useAdUnits();
+  const { pathname } = useLocation();
+  const { status } = useAuth();
+  const [availableAt, setAvailableAt] = useState(() => sponsoredDeadline());
+  useEffect(() => {
+    if (!availableAt) return;
+    const timer = window.setTimeout(() => setAvailableAt(0), Math.max(0, availableAt - Date.now()));
+    return () => clearTimeout(timer);
+  }, [availableAt]);
+  const open = () => {
+    if (!networkDue() || !onClickDue()) { setAvailableAt(sponsoredDeadline()); return; }
+    const alternatives = status === 'anonymous' ? units.filter(eligibleOnClickLink) : [];
+    const smartlink = {...unit, frequencyMinutes: ONCLICK_MINUTES};
+    const due = [smartlink, ...alternatives].filter(u => isDue(u, pathname));
+    const candidate = due.sort((a,b) => lastSeen(a.id) - lastSeen(b.id))[0];
+    if (!candidate) return;
+    recordShown(candidate, pathname);
+    markOnClick();
+    setAvailableAt(sponsoredDeadline());
+    window.open(candidate.id === unit.id ? href : candidate.targetUrl!, '_blank', 'noopener,noreferrer');
+  };
+  return <button type="button" disabled={availableAt > Date.now()} onClick={open}
+    className="mx-auto my-2 inline-flex rounded-lg border border-line px-4 py-2 text-sm font-medium text-accent disabled:opacity-50">
+    {availableAt > Date.now() ? 'Vui lòng chờ trước khi mở quảng cáo tiếp theo' : label}
+  </button>;
+}
+
 function Creative({ unit, onClick, onState }: { unit: AdUnit; onClick?: () => void; onState?: (visible:boolean)=>void }) {
   if (unit.imageUrl && unit.targetUrl) {
     return (
@@ -149,6 +179,7 @@ function Creative({ unit, onClick, onState }: { unit: AdUnit; onClick?: () => vo
     );
   }
   const link=standaloneLink(unit.html);
+  if(link && adKind(unit)==='smartlink')return <SponsoredLink unit={unit} href={link.href} label="Mở quảng cáo trong tab mới" />;
   if(link)return <a href={link.href} target="_blank" rel="sponsored noopener noreferrer" onClick={onClick} className="mx-auto my-2 inline-flex rounded-lg border border-line px-4 py-2 text-sm font-medium text-accent hover:underline">{link.label}</a>;
   return unit.html ? <HtmlCreative key={unit.id+':'+unit.html} html={unit.html} title={unit.name} minHeight={dimensions(unit)?.height??90} onState={onState}/> : null;
 }
@@ -231,7 +262,7 @@ export function AdSlot({slot,className}:{slot:AdSlotName;className?:string}){
   useEffect(()=>{matching.filter(u=>isKnownAdsterraTag(u)&&!isDirectBanner(u)).forEach(u=>noteAd(u.id,slot,'approval-required'));},[units,slot,size.width,size.viewport,group]);
   const primary=weightedPick(eligible,pick);
   const failedPrimary=primary && failed===primary.id+':'+primary.html;
-  const unit=primary&&failedPrimary?imageFallback(eligible,primary.id,pick):primary;
+  const unit=primary&&failedPrimary?bannerFallback(eligible,primary.id,pick):primary;
   const fail=()=>{if(primary&&!failedPrimary)setFailed(primary.id+':'+primary.html);};
   useEffect(()=>{if(failedPrimary&&unit)noteAd(unit.id,slot,'fallback');},[failedPrimary,unit,slot]);
   return <div ref={host} data-ad-slot-wrapper="" className={cn('w-full min-w-0',className)}>
@@ -312,10 +343,13 @@ function injectScriptUnit(unit: AdUnit):boolean {
 const NETWORK_UNTIL='rn_ad_network_until';
 const ONCLICK_LAST='rn_ad_onclick_last_v2';
 let lastOnClick=0;
-function onClickDue(){try{return Date.now()-Math.max(lastOnClick,Number(localStorage.getItem(ONCLICK_LAST))||0)>=ONCLICK_MINUTES*60_000;}catch{return Date.now()-lastOnClick>=ONCLICK_MINUTES*60_000;}}
+function onClickDeadline(){try{return Math.max(lastOnClick,Number(localStorage.getItem(ONCLICK_LAST))||0)+ONCLICK_MINUTES*60_000;}catch{return lastOnClick+ONCLICK_MINUTES*60_000;}}
+function onClickDue(){return Date.now()>=onClickDeadline();}
 function markOnClick(){lastOnClick=Date.now();try{localStorage.setItem(ONCLICK_LAST,String(lastOnClick));}catch{/* optional */}}
 let networkUntil=0;
-function networkDue(){try{return Date.now()>=Math.max(networkUntil,Number(localStorage.getItem(NETWORK_UNTIL))||0);}catch{return Date.now()>=networkUntil;}}
+function networkDeadline(){try{return Math.max(networkUntil,Number(localStorage.getItem(NETWORK_UNTIL))||0);}catch{return networkUntil;}}
+function networkDue(){return Date.now()>=networkDeadline();}
+function sponsoredDeadline(){return Math.max(networkDeadline(),onClickDeadline());}
 function recordNetwork(unit:AdUnit){networkUntil=Date.now()+Math.max(1,unit.frequencyMinutes??30)*60_000;try{localStorage.setItem(NETWORK_UNTIL,String(networkUntil));}catch{/* optional */}}
 
 /**

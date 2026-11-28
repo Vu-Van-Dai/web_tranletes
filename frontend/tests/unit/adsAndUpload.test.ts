@@ -23,7 +23,7 @@ describe('ad placement', () => {
     expect(isAdFreePath('/')).toBe(false);
     expect(isAdFreePath('/doc/123')).toBe(false);
     expect(isAdFreePath('/quan-tri-vien')).toBe(false);
-    for (const path of ['/dang-nhap', '/dang-ky', '/tu-truyen', '/lien-he', '/tim-kiem']) expect(isAdFreePath(path)).toBe(true);
+    for (const path of ['/dang-nhap', '/dang-ky', '/tu-truyen', '/lien-he']) expect(isAdFreePath(path)).toBe(true);
   });
 
   it('maps public URLs to page groups', () => {
@@ -31,6 +31,7 @@ describe('ad placement', () => {
     expect(pageGroupOf('/doc/0193')).toBe('reader');
     expect(pageGroupOf('/truyen/0193/ten-truyen')).toBe('comic');
     expect(pageGroupOf('/truyen')).toBe('browse');
+    expect(isAdFreePath('/tim-kiem')).toBe(false);
     expect(pageGroupOf('/tim-kiem')).toBe('browse');
     expect(pageGroupOf('/the-loai/hai-huoc')).toBe('browse');
     expect(pageGroupOf('/nhom-dich/rong-nho')).toBe('house');
@@ -224,5 +225,16 @@ describe('HilltopAds home layout preset',()=>{
     expect(suggestedHilltopLayout({...h,format:'newtab',targetUrl:'https://example.com/official',name:'OnClick'}).frequencyMinutes).toBe(ONCLICK_MINUTES);
     expect(suggestedHilltopLayout({...h,provider:'adsterra',name:'Banner 728x90',slots:['site_top'],enabled:true}).enabled).toBe(false);
     expect(ONCLICK_MINUTES).toBe(2);
+  });
+});
+
+import { bannerFallback } from '@/features/ads/placement';
+describe('cross-provider banner fallback',()=>{
+  it('prefers a distinct provider and does not retry the failed creative',()=>{
+    const ad={id:'a',provider:'adsterra',html:'<script src="https://example.com/a"></script>',format:'banner',enabled:true} as AdUnit;
+    const other={...ad,id:'b',provider:'hilltopads',html:'<script src="https://example.com/b"></script>'} as AdUnit;
+    expect(bannerFallback([ad,{...ad,id:'same'},other],ad.id,0)?.id).toBe('b');
+    expect(bannerFallback([ad,{...other,html:ad.html}],ad.id,0)).toBeUndefined();
+    expect(bannerFallback([ad],ad.id,0)).toBeUndefined();
   });
 });
