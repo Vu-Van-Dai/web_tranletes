@@ -444,7 +444,7 @@ export function AdsRuntime() {
   },[units,pathname,onClickAvailable,onClickOff,networkPick]);
 
   return <>
-    {onClickAvailable&&!onClickOff&&<aside data-ad="" className="fixed bottom-20 right-3 z-40 max-w-[min(22rem,90vw)] rounded-xl border border-line bg-surface p-3 text-xs shadow-lg md:bottom-4"><p>Liên kết đọc truyện và điều hướng có thể mở tab quảng cáo riêng (tối đa 1 lần / 2 phút).</p><button type="button" onClick={turnOffOnClick} className="mt-1 text-muted underline">Tắt quảng cáo mở tab</button></aside>}
+    {onClickAvailable&&!onClickOff&&<p data-ad="" className="text-xs leading-relaxed text-muted">Khi điều hướng, có thể mở tab quảng cáo (tối đa 1 lần / 2 phút).{' '}<button type="button" onClick={turnOffOnClick} className="underline underline-offset-2">Tắt mở tab</button></p>}
     {popup && popup.path === pathname && units.some(u => u.id === popup.unit.id) && <AdPopup unit={popup.unit} onClose={() => setPopup(null)} />}
   </>;
 }

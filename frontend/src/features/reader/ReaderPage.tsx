@@ -334,8 +334,8 @@ function Reader({ data, onStale }: { data: ReaderData; onStale: () => void }) {
         {pkg && (
           <EndOfChapter data={data} onPrev={() => goChapter(chapter.prev?.id)} onNext={() => goChapter(chapter.next?.id)} />
         )}
+        <div className="mx-auto my-4 max-w-[900px] px-3 text-center"><AdsRuntime /></div>
       </main>
-      <AdsRuntime />
 
       {/* Bottom bar */}
       <footer className={cn('fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 backdrop-blur transition-transform', !barsVisible && 'translate-y-full')}>

@@ -177,8 +177,6 @@ export function PublicLayout() {
       </main>
       <div className="fixed left-2 top-24 z-10 hidden w-[180px] min-[1700px]:block" aria-label="Vị trí quảng cáo bên trái"><AdSlot slot="side_left" /></div>
       <div className="fixed right-2 top-24 z-10 hidden w-[180px] min-[1700px]:block" aria-label="Vị trí quảng cáo bên phải"><AdSlot slot="side_right" /></div>
-      <AdsRuntime />
-
       <footer className="mt-12 border-t border-line bg-surface py-8 pb-24 text-sm text-muted md:pb-8">
         <div className="container-page grid gap-7 lg:grid-cols-[1fr_auto] lg:gap-12">
           <div className="max-w-lg space-y-3">
@@ -199,6 +197,7 @@ export function PublicLayout() {
               <Link className="hover:text-ink hover:underline" to={paths.faq}>FAQ</Link>
             </div>
             <a className="break-all hover:text-ink hover:underline" href="mailto:rongnhotranlation@gmail.com">rongnhotranlation@gmail.com</a>
+            <AdsRuntime />
           </nav>
         </div>
       </footer>
