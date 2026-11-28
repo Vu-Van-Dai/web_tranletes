@@ -194,3 +194,20 @@ describe('public ad placements and opt-in OnClick',()=>{
     for(const id of ['admin','studio','form','ad'])expect(isPublicContentClick(document.getElementById(id)!)).toBe(false);
   });
 });
+
+
+describe('HilltopAds MultiTag bootstrap compatibility',()=>{
+  const bootstrap=(url:string)=>'<script>(function(ctpa){var d = document, s = d.createElement("script"), l = d.currentScript || d.scripts[d.scripts.length - 1]; s.settings = ctpa || {}; s.src = '+JSON.stringify(url).replaceAll('/','\\/')+'; s.async = true; s.referrerPolicy = "no-referrer-when-downgrade"; l.parentNode.insertBefore(s, l);})({});</script>';
+  it('recognizes the supplied inline bootstrap without executing it',()=>{
+    const tag=bootstrap('//same-upstairs.com/example/zone-a');
+    expect(directTagKind(tag,'hilltopads')).toBe('async');
+    expect(parseDirectTag(tag,'hilltopads').urls).toEqual(['https://same-upstairs.com/example/zone-a']);
+    expect(directTagKind(tag,'adsterra')).toBe('invalid');
+  });
+  it('rejects unrecognized or insecure inline-only scripts',()=>{
+    expect(directTagKind(bootstrap('http://same-upstairs.com/a'),'hilltopads')).toBe('invalid');
+    expect(directTagKind(bootstrap('//example.com/a'),'hilltopads')).toBe('invalid');
+    expect(directTagKind('<script>alert(1)</script>','hilltopads')).toBe('invalid');
+    expect(directTagKind(bootstrap('//same-upstairs.com/a')+'<script>alert(1)</script>','hilltopads')).toBe('invalid');
+  });
+});

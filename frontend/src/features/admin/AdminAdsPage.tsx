@@ -150,7 +150,7 @@ export function AdminAdsPage() {
                 <li key={u.id} className="card flex flex-wrap items-center gap-3 p-4">
                   {u.imageUrl ? <img src={u.imageUrl} alt="" className="h-12 w-20 shrink-0 rounded-lg object-cover" /> : <span className="grid h-12 w-20 shrink-0 place-items-center rounded-lg bg-surface-2 text-xs text-muted">{u.html ? 'HTML' : '—'}</span>}
                   <div className="min-w-0 flex-1">
-                    <p className="flex flex-wrap items-center gap-2 font-medium">{u.name}<Badge tone="accent">{formatLabel[u.format]}</Badge><Badge>{providerLabels[providerOf(u)]}</Badge>{u.format === 'banner' && u.scriptApproved && <Badge>Script trực tiếp</Badge>}{adKind(u)!=='other'&&<Badge>{adKind(u)==='popunder'?'Popunder':adKind(u)==='socialbar'?'Social Bar':'Smartlink'}</Badge>}{u.format==='banner'&&u.html&&/<script\b/i.test(u.html)&&<Badge>{directTagKind(u.html)==='async'?'Async':directTagKind(u.html)==='sync'?'Sync (tối đa 1 trực tiếp)':'Tag chưa tương thích'}</Badge>}{!u.enabled && <Badge>Đang tắt</Badge>}</p>
+                    <p className="flex flex-wrap items-center gap-2 font-medium">{u.name}<Badge tone="accent">{formatLabel[u.format]}</Badge><Badge>{providerLabels[providerOf(u)]}</Badge>{u.format === 'banner' && u.scriptApproved && <Badge>Script trực tiếp</Badge>}{adKind(u)!=='other'&&<Badge>{adKind(u)==='popunder'?'Popunder':adKind(u)==='socialbar'?'Social Bar':'Smartlink'}</Badge>}{u.format==='banner'&&u.html&&/<script\b/i.test(u.html)&&<Badge>{directTagKind(u.html,u.provider)==='async'?'Async':directTagKind(u.html,u.provider)==='sync'?'Sync (tối đa 1 trực tiếp)':'Tag chưa tương thích'}</Badge>}{!u.enabled && <Badge>Đang tắt</Badge>}</p>
                     <p className="text-xs text-muted">{describe(u)} · {u.device??'all'} · {dimensions(u)?dimensions(u)!.width+'×'+dimensions(u)!.height:'tự thích ứng'} · trọng số {u.weight??1}{u.placementId?' · ID '+u.placementId:''}</p>
                     {diagnostics[u.id] && <p className="text-xs text-muted">Chẩn đoán cục bộ: {diagnosticLabel[diagnostics[u.id]!.state]??diagnostics[u.id]!.state} · {new Date(diagnostics[u.id]!.at).toLocaleString('vi-VN')}</p>}
                   </div>
@@ -266,7 +266,7 @@ function AdEditor({ unit, providerSettings, onCancel, onSave }: { unit: AdUnit; 
 
         {u.format==='banner'&&creative==='html'&&u.html&&/<script\b/i.test(u.html)&&(
           <p className="rounded-xl bg-surface-2 p-3 text-sm text-muted">
-            {directTagKind(u.html)==='async'?'Tag bất đồng bộ: có thể cùng tồn tại với các tag độc lập khác.':directTagKind(u.html)==='sync'?'Tag đồng bộ: chỉ một banner trực tiếp mỗi tài liệu. Yêu cầu mã JSAsync chính thức nếu cần nhiều banner.':'Tag chưa tương thích với trình nạp trực tiếp.'}
+            {directTagKind(u.html,u.provider)==='async'?'Tag bất đồng bộ: có thể cùng tồn tại với các tag độc lập khác.':directTagKind(u.html,u.provider)==='sync'?'Tag đồng bộ: chỉ một banner trực tiếp mỗi tài liệu. Yêu cầu mã JSAsync chính thức nếu cần nhiều banner.':'Tag chưa tương thích với trình nạp trực tiếp.'}
             {!u.scriptApproved?' Đang chọn iframe cách ly; một số nhà cung cấp yêu cầu cookie nên có thể không hiển thị.':''}
           </p>
         )}
@@ -278,6 +278,7 @@ function AdEditor({ unit, providerSettings, onCancel, onSave }: { unit: AdUnit; 
         )}
 
         {u.format==='newtab'&&!eligibleOnClickLink(u)&&<p className="rounded-xl bg-surface-2 p-3 text-sm text-muted">Cần URL HTTPS Popunder Direct URL của HilltopAds hoặc URL nhà tài trợ trực tiếp. Các URL mạng khác không chạy theo cơ chế này.</p>}
+        {u.format==='banner'&&u.provider==='hilltopads'&&<p className="rounded-xl bg-surface-2 p-3 text-sm text-muted">MultiTag mặc định có thể mở Popup ngoài banner. Chỉ bật banner này sau khi quản lý HilltopAds xác nhận chế độ chỉ Banner, danh mục phù hợp và tần suất. Dán nguyên mã Zone, không sửa bootstrap.</p>}
         {u.format==='script'&&u.provider==='hilltopads'&&<p className="rounded-xl bg-surface-2 p-3 text-sm text-muted">Dán mã Zone chính thức. MultiTag có thể kèm Popup; yêu cầu quản lý HilltopAds chế độ chỉ Banner nếu cần. Tần suất thực tế do nhà cung cấp điều khiển. Không bật đồng thời với OnClick Direct URL.</p>}
         {u.format==='banner'&&isKnownAdsterraTag(u)&&!u.scriptApproved&&<p className="rounded-xl bg-surface-2 p-3 text-sm text-muted">Tag Adsterra này từng lỗi trong iframe cách ly; hệ thống sẽ bỏ qua thay vì tạo khung trắng. Kiểm tra danh mục rồi phê duyệt chạy trực tiếp nếu phù hợp; tag Sync vẫn giới hạn một mã mỗi tài liệu.</p>}
         {u.format === 'newtab' && (

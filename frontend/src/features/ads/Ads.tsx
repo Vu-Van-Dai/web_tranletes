@@ -178,7 +178,7 @@ function DirectBanner({ unit, slot, className, onFailure }: {unit: AdUnit; slot:
       const ok = await mountDirectBanner(el, unit.id, unit.html!, controller.signal, () => {
         window.__rnAdScripts = true;
         window.__rnAdPath = pathname;
-      }, reason => {failure.reason=reason;});
+      }, reason => {failure.reason=reason;}, unit.provider);
       if (controller.signal.aborted) return;
       if (!ok) { noteAd(unit.id,slot,failure.reason==='cancelled'?'script-error':failure.reason); setEmpty(true);onFailure?.();return; }
       // Cannot inspect cross-origin iframe contents or assert a counted impression.
