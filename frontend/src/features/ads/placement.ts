@@ -27,16 +27,19 @@ const slotOrder:Record<AdPage,AdSlot[]>={
   reader:['reader_top','reader_bottom'],library:[],other:[]
 };
 export function assignedBannerSlot(u:AdUnit,page:AdPage):AdSlot|undefined {
-  if(u.format!=='banner'||!u.html||!/<script\b/i.test(u.html))return undefined;
+  if(u.format!=='banner')return undefined;
+  if(isAdcashBanner(u))return slotOrder[page].find(slot=>u.slots?.includes(slot));
+  if(!u.html||!/<script\b/i.test(u.html))return undefined;
   return slotOrder[page].find(slot=>u.slots?.includes(slot));
 }
 /** Reserve a distinct footer tag when multiple tags otherwise compete for
  * the same earlier slot. Only use configured positions, never duplicate a tag. */
 export function footerBannerReservation(units:AdUnit[],page:AdPage,viewport:number):string|undefined {
   if(!slotOrder[page].includes('site_bottom')||viewport<=0)return undefined;
-  const candidates=units.filter(u=>u.enabled&&isVisualBanner(u)&&!!u.html&&/<script\b/i.test(u.html)&&
+  const candidates=units.filter(u=>u.enabled&&isVisualBanner(u)&&(isAdcashBanner(u)||!!u.html&&/<script\b/i.test(u.html))&&
     !(u.device==='mobile'&&viewport>=768)&&!(u.device==='desktop'&&viewport<768));
-  const unique=candidates.filter((u,i)=>candidates.findIndex(v=>v.html===u.html)===i);
+  const creativeKey=(u:AdUnit)=>isAdcashBanner(u)?'adcash:'+u.placementId:(u.html??'unit:'+u.id);
+  const unique=candidates.filter((u,i)=>candidates.findIndex(v=>creativeKey(v)===creativeKey(u))===i);
   if(unique.some(u=>assignedBannerSlot(u,page)==='site_bottom'))return undefined;
   // Keep the working Native Banner in its earlier slot whenever possible.
   const ordered=[...unique].sort((a,b)=>Number(/native/i.test(a.name))-Number(/native/i.test(b.name)));
