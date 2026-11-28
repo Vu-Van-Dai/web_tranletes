@@ -59,7 +59,7 @@ public sealed partial class AdsService(IAppDbContext db, IMediaService media, IP
     public const int MaxUnits = 50;
     public const int MaxHtmlLength = 20_000;
     public static readonly IReadOnlySet<string> Providers = new HashSet<string>(StringComparer.Ordinal)
-        { "direct", "custom", "adsense", "adsterra", "hilltopads", "clickadu", "monetag", "exoclick", "other" };
+        { "direct", "custom", "adsense", "adsterra", "hilltopads", "clickadu", "monetag", "exoclick", "adcash", "other" };
 
     private static string ProviderOf(AdUnitDto unit) => unit.Provider ?? (unit.Format == "script" || unit.Html is not null ? "custom" : "direct");
     public static bool IsUnitAllowed(AdsConfigDto config, AdUnitDto unit) => config.Enabled && unit.Enabled &&
@@ -67,6 +67,7 @@ public sealed partial class AdsService(IAppDbContext db, IMediaService media, IP
         ProviderOf(unit) != "adsense" && (!RequiresDirectScript(unit) || config.AllowDirectScripts && unit.ScriptApproved);
 
     private static bool RequiresDirectScript(AdUnitDto unit) => unit.Format == "script" ||
+        (unit.Format == "banner" && unit.Provider == "adcash") ||
         (unit.Format == "banner" && unit.ScriptApproved && !string.IsNullOrWhiteSpace(unit.Html) && string.IsNullOrWhiteSpace(unit.ImageUrl));
 
     public static readonly IReadOnlySet<string> Formats = new HashSet<string>(StringComparer.Ordinal) { "banner", "popup", "newtab", "script" };
@@ -199,12 +200,18 @@ public sealed partial class AdsService(IAppDbContext db, IMediaService media, IP
 
             var hasImage = !string.IsNullOrWhiteSpace(u.ImageUrl) && !string.IsNullOrWhiteSpace(u.TargetUrl);
             var hasHtml = !string.IsNullOrWhiteSpace(u.Html);
+            var isAdcash = provider == "adcash";
+            var validAdcashZone = Regex.IsMatch(u.PlacementId ?? "", @"^\d{1,20}$");
+            v.Must(!isAdcash || format == "banner", f + ".format", "Adcash hiện chỉ hỗ trợ Display Banner.");
+            v.Must(!isAdcash || validAdcashZone, f + ".placementId", "Adcash Display cần Zone ID dạng số.");
+            v.Must(!isAdcash || (!hasImage && !hasHtml), f + ".html", "Adcash Display dùng Zone ID; không dán mã HTML hoặc ảnh vào quảng cáo này.");
             var slots = (u.Slots ?? []).Distinct().ToList();
             var pages = (u.Pages ?? []).Distinct().ToList();
             switch (format)
             {
                 case "banner":
-                    v.Must(hasImage || hasHtml, f + ".imageUrl", "Banner cần ảnh + liên kết đích, hoặc mã HTML của mạng quảng cáo.");
+                    v.Must(isAdcash ? validAdcashZone : hasImage || hasHtml, f + ".imageUrl",
+                        isAdcash ? "Adcash Display cần Zone ID hợp lệ." : "Banner cần ảnh + liên kết đích, hoặc mã HTML của mạng quảng cáo.");
                     v.Must(slots.Count > 0 && slots.All(Slots.Contains), f + ".slots", "Hãy chọn ít nhất một vị trí hiển thị hợp lệ.");
                     break;
                 case "popup":
@@ -244,7 +251,8 @@ public sealed partial class AdsService(IAppDbContext db, IMediaService media, IP
                 u.DelaySeconds,
                 u.FrequencyMinutes,
                 format == "newtab" ? u.Trigger ?? "any" : null,
-                provider, u.ScriptApproved && (format == "script" || (format == "banner" && hasHtml && !hasImage)),
+                provider, u.ScriptApproved && (format == "script" ||
+                    (format == "banner" && ((hasHtml && !hasImage) || (isAdcash && validAdcashZone)))),
                 u.Device, u.Width, u.Height, u.Weight, Clean(u.PlacementId)));
         }
 
