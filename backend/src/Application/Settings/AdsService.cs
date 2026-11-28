@@ -204,7 +204,8 @@ public sealed partial class AdsService(IAppDbContext db, IMediaService media, IP
             var validAdcashZone = Regex.IsMatch(u.PlacementId ?? "", @"^\d{1,20}$");
             v.Must(!isAdcash || format == "banner", f + ".format", "Adcash hiện chỉ hỗ trợ Display Banner.");
             v.Must(!isAdcash || validAdcashZone, f + ".placementId", "Adcash Display cần Zone ID dạng số.");
-            v.Must(!isAdcash || (!hasImage && !hasHtml), f + ".html", "Adcash Display dùng Zone ID; không dán mã HTML hoặc ảnh vào quảng cáo này.");
+            v.Must(!isAdcash || (string.IsNullOrWhiteSpace(u.ImageUrl) && string.IsNullOrWhiteSpace(u.TargetUrl) && !hasHtml),
+                f + ".html", "Adcash Display dùng Zone ID; không dán mã HTML, ảnh hoặc liên kết thủ công vào quảng cáo này.");
             var slots = (u.Slots ?? []).Distinct().ToList();
             var pages = (u.Pages ?? []).Distinct().ToList();
             switch (format)
