@@ -103,7 +103,7 @@ describe('approved direct banners', () => {
   });
 });
 
-import { assignedBannerSlot, dimensions, fitsSlot, isVisualBanner, planBanners, weightedPick, standaloneLink, suggestedAdsterraLayout } from '@/features/ads/placement';
+import { dimensions, fitsSlot, weightedPick, standaloneLink, suggestedAdsterraLayout } from '@/features/ads/placement';
 describe('Adcash Display zones', () => {
   const banner = {
     id: 'adcash-display-test', name: 'Adcash Display', provider: 'adcash', format: 'banner',
