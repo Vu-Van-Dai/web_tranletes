@@ -150,9 +150,9 @@ export function AdminAdsPage() {
             <ul className="space-y-3" data-testid="ad-units">
               {config.units.map((u) => (
                 <li key={u.id} className="card flex flex-wrap items-center gap-3 p-4">
-                  {u.imageUrl ? <img src={u.imageUrl} alt="" className="h-12 w-20 shrink-0 rounded-lg object-cover" /> : <span className="grid h-12 w-20 shrink-0 place-items-center rounded-lg bg-surface-2 text-xs text-muted">{u.html ? 'HTML' : '—'}</span>}
+                  {u.imageUrl ? <img src={u.imageUrl} alt="" className="h-12 w-20 shrink-0 rounded-lg object-cover" /> : <span className="grid h-12 w-20 shrink-0 place-items-center rounded-lg bg-surface-2 text-xs text-muted">{u.provider==='adcash' ? 'ADCASH' : u.html ? 'HTML' : '—'}</span>}
                   <div className="min-w-0 flex-1">
-                    <p className="flex flex-wrap items-center gap-2 font-medium">{u.name}<Badge tone="accent">{formatLabel[u.format]}</Badge><Badge>{providerLabels[providerOf(u)]}</Badge>{u.format === 'banner' && u.scriptApproved && <Badge>Script trực tiếp</Badge>}{adKind(u)!=='other'&&<Badge>{adKind(u)==='popunder'?'Popunder':adKind(u)==='socialbar'?'Social Bar':'Smartlink'}</Badge>}{u.format==='banner'&&u.html&&/<script\b/i.test(u.html)&&<Badge>{directTagKind(u.html,u.provider)==='async'?'Async':directTagKind(u.html,u.provider)==='sync'?'Sync (tối đa 1 trực tiếp)':'Tag chưa tương thích'}</Badge>}{!u.enabled && <Badge>Đang tắt</Badge>}</p>
+                    <p className="flex flex-wrap items-center gap-2 font-medium">{u.name}<Badge tone="accent">{formatLabel[u.format]}</Badge><Badge>{providerLabels[providerOf(u)]}</Badge>{u.format === 'banner' && u.scriptApproved && <Badge>{u.provider==='adcash'?'Adcash Display trực tiếp':'Script trực tiếp'}</Badge>}{adKind(u)!=='other'&&<Badge>{adKind(u)==='popunder'?'Popunder':adKind(u)==='socialbar'?'Social Bar':'Smartlink'}</Badge>}{u.format==='banner'&&u.html&&/<script\b/i.test(u.html)&&<Badge>{directTagKind(u.html,u.provider)==='async'?'Async':directTagKind(u.html,u.provider)==='sync'?'Sync (tối đa 1 trực tiếp)':'Tag chưa tương thích'}</Badge>}{!u.enabled && <Badge>Đang tắt</Badge>}</p>
                     <p className="text-xs text-muted">{describe(u)} · {u.device??'all'} · {dimensions(u)?dimensions(u)!.width+'×'+dimensions(u)!.height:'tự thích ứng'} · trọng số {u.weight??1}{u.placementId?' · ID '+u.placementId:''}</p>
                     {diagnostics[u.id] && <p className="text-xs text-muted">Chẩn đoán cục bộ: {diagnosticLabel[diagnostics[u.id]!.state]??diagnostics[u.id]!.state} · {new Date(diagnostics[u.id]!.at).toLocaleString('vi-VN')}</p>}
                   </div>
@@ -202,38 +202,51 @@ function AdEditor({ unit, providerSettings, onCancel, onSave }: { unit: AdUnit; 
     onSuccess: (r) => set({ imageUrl: r.url }),
     onError: (e) => toast.error(e),
   });
-  const hasCreative = u.format === 'banner' || u.format === 'popup';
+  const adcashBanner = providerSettings && u.provider === 'adcash' && u.format === 'banner';
+  const hasCreative = (u.format === 'banner' || u.format === 'popup') && !adcashBanner;
   const usesPages = u.format !== 'banner';
 
   const finish = () => {
     const clean: AdUnit = {
       ...u,
       name: u.name.trim(),
-      scriptApproved: (u.format === 'script' || (u.format === 'banner' && creative === 'html')) && u.scriptApproved === true,
-      imageUrl: hasCreative && creative === 'image' ? u.imageUrl : null,
-      html: (hasCreative && creative === 'html') || u.format === 'script' ? u.html : null,
-      targetUrl: (hasCreative && creative === 'image') || u.format === 'newtab' ? u.targetUrl : null,
+      scriptApproved: adcashBanner ? u.scriptApproved === true : (u.format === 'script' || (u.format === 'banner' && creative === 'html')) && u.scriptApproved === true,
+      imageUrl: !adcashBanner && hasCreative && creative === 'image' ? u.imageUrl : null,
+      html: !adcashBanner && ((hasCreative && creative === 'html') || u.format === 'script') ? u.html : null,
+      targetUrl: !adcashBanner && ((hasCreative && creative === 'image') || u.format === 'newtab') ? u.targetUrl : null,
     };
     onSave(clean);
   };
 
   return (
     <Modal open size="lg" onClose={onCancel} title={unit.name ? `Sửa: ${unit.name}` : 'Thêm quảng cáo'}
-      footer={<><Button variant="outline" onClick={onCancel}>Huỷ</Button><Button disabled={!u.name.trim() || upload.isPending} onClick={finish} data-testid="ad-editor-done">Xong</Button></>}>
+      footer={<><Button variant="outline" onClick={onCancel}>Huỷ</Button><Button disabled={!u.name.trim() || upload.isPending || (adcashBanner && !/^\d{1,20}$/.test(u.placementId??''))} onClick={finish} data-testid="ad-editor-done">Xong</Button></>}>
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Tên (chỉ quản trị thấy)" required>{(id) => <Input id={id} value={u.name} maxLength={100} onChange={(e) => set({ name: e.target.value })} data-testid="ad-name" />}</Field>
           <Field label="Loại quảng cáo">
             {(id) => (
               <Select id={id} value={u.format} onChange={(e) => set({ format: e.target.value as AdFormat, scriptApproved: false })} data-testid="ad-format">
-                {Object.entries(formatLabel).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                {Object.entries(formatLabel).filter(([v])=>u.provider!=='adcash'||v==='banner').map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </Select>
             )}
           </Field>
         </div>
-        {providerSettings && <Field label="Nhà cung cấp">{(id) => <Select id={id} value={providerOf(u)} onChange={e => set({provider:e.target.value as AdProvider, scriptApproved:false})}>{Object.entries(providerLabels).filter(([p]) => p !== 'adsense').map(([p,label]) => <option key={p} value={p}>{label}</option>)}</Select>}</Field>}
-        <p className="rounded-xl bg-surface-2 px-3 py-2 text-sm text-muted">{formatHint[u.format]}</p>
+        {providerSettings && <Field label="Nhà cung cấp">{(id) => <Select id={id} value={providerOf(u)} onChange={e => {
+          const provider=e.target.value as AdProvider;
+          set({provider,format:provider==='adcash'?'banner':u.format,scriptApproved:false,
+            placementId:provider==='adcash'&&/^\d{1,20}$/.test(u.placementId??'')?u.placementId:null,
+            width:provider==='adcash'?300:u.width,height:provider==='adcash'?250:u.height,
+            slots:provider==='adcash'?['reader_bottom']:u.slots});
+        }}>{Object.entries(providerLabels).filter(([p]) => p !== 'adsense').map(([p,label]) => <option key={p} value={p}>{label}</option>)}</Select>}</Field>}
+        <p className="rounded-xl bg-surface-2 px-3 py-2 text-sm text-muted">{adcashBanner ? 'Adcash Display: hệ thống tự nạp thư viện chính thức một lần và gọi Zone ID vào container riêng. Chỉ hỗ trợ Display Banner; không dán HTML/JS thủ công.' : formatHint[u.format]}</p>
         {providerSettings && u.format === 'script' && <Checkbox label="Đã kiểm tra mã, nguồn cung cấp và danh mục quảng cáo hợp pháp" description="Mã chạy với quyền của trang web; chỉ bật sau khi đã xác minh nguồn. Thay đổi mã sẽ hủy phê duyệt." checked={u.scriptApproved === true} onChange={e => set({scriptApproved:e.target.checked})} />}
+        {adcashBanner && <section className="space-y-3 rounded-xl border border-line p-3">
+          <Field label="Adcash Display Zone ID" required hint="Nhập ID số từ Adcash → Zones → My Zones, ví dụ 12501966. Không nhập mã Autotag.">
+            {id => <Input id={id} type="text" maxLength={20} placeholder="12501966" value={u.placementId??''} onChange={e=>set({placementId:e.target.value.trim()||null})} data-testid="adcash-zone-id"/>}
+          </Field>
+          <Checkbox label="Đã xác minh website và Display Zone trong tài khoản Adcash" description="Chỉ phê duyệt sau khi website được Adcash chấp nhận và bạn đã kiểm tra đúng zone Display. Mã thư viện chính thức sẽ chạy trực tiếp trên trang, chỉ với khách chưa đăng nhập; cần bật công tắc script toàn hệ thống." checked={u.scriptApproved===true} onChange={e=>set({scriptApproved:e.target.checked})} data-testid="adcash-approval"/>
+        </section>}
 
         {hasCreative && (
           <div className="space-y-3">
@@ -273,7 +286,7 @@ function AdEditor({ unit, providerSettings, onCancel, onSave }: { unit: AdUnit; 
           </p>
         )}
         {u.format==='newtab'&&u.provider==='adsterra'&&<p className="rounded-xl bg-surface-2 p-3 text-sm text-muted">Adsterra khuyến cáo không gắn Smartlink vào nút điều hướng. Dùng Popunder chính thức cho hành vi mở tab và Smartlink trên nút quảng cáo được ghi nhãn.</p>}
-        {providerSettings && u.format === 'banner' && creative === 'html' && (
+        {providerSettings && u.provider !== 'adcash' && u.format === 'banner' && creative === 'html' && (
           <Checkbox label="Chạy trực tiếp mã banner (không dùng iframe của Rồng Nhỏ)"
             description="Chỉ dùng mã chính thức đã kiểm tra và danh mục quảng cáo hợp pháp. Script có quyền của trang web; chỉ chạy với khách chưa đăng nhập, cần bật quyền script toàn hệ thống. Bỏ chọn để quay về iframe cách ly. Ưu tiên mã JSAsync; mỗi trang chỉ thử một banner đồng bộ."
             checked={u.scriptApproved === true} onChange={e => set({scriptApproved:e.target.checked})} data-testid="ad-direct-banner" />
@@ -297,7 +310,7 @@ function AdEditor({ unit, providerSettings, onCancel, onSave }: { unit: AdUnit; 
         )}
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Placement ID (tùy chọn)">{id=><Input id={id} maxLength={80} value={u.placementId??''} onChange={e=>set({placementId:e.target.value||null})}/>}</Field>
+          {u.provider!=='adcash'&&<Field label="Placement ID (tùy chọn)">{id=><Input id={id} maxLength={80} value={u.placementId??''} onChange={e=>set({placementId:e.target.value||null})}/>}</Field>}
           <Field label="Trọng số luân phiên (1–100)">{id=><Input id={id} type="number" min={1} max={100} value={u.weight??1} onChange={e=>set({weight:Number(e.target.value)})}/>}</Field>
           {u.format==='banner' && <>
             <Field label="Thiết bị">{id=><Select id={id} value={u.device??'all'} onChange={e=>set({device:e.target.value as 'all'|'desktop'|'mobile'})}><option value="all">Mọi thiết bị</option><option value="desktop">Máy tính</option><option value="mobile">Điện thoại</option></Select>}</Field>

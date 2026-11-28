@@ -5,7 +5,7 @@ const sources = new Set<string>();
 let queue: Promise<unknown> = Promise.resolve();
 let syncBannerStarted = false;
 export const loadedDirectBanners = () => [...loaded.entries()];
-export type DirectFailure = 'invalid-tag' | 'duplicate' | 'sync-limit' | 'script-error' | 'cancelled';
+export type DirectFailure = 'invalid-tag' | 'duplicate' | 'sync-limit' | 'script-error' | 'cancelled' | 'library-error' | 'zone-error';
 
 // HilltopAds MultiTag supplies an inline bootstrap which creates its own async
 // script. Read the literal URL for duplicate detection, never evaluate the code
@@ -114,6 +114,101 @@ export function mountDirectBanner(host: HTMLElement, id: string, html: string, s
   const result = queue.then(run, run);
   queue = result.catch(() => false);
   return result.catch(() => {onFailure?.('script-error');return false;});
+}
+
+declare global {
+  interface Window {
+    aclib?: {
+      runBanner: (options: { zoneId: string; renderIn: string }) => void;
+    };
+  }
+}
+
+const ADCASH_LIBRARY_SRC = 'https://acscdn.com/script/aclib.js';
+let adcashLibraryPromise: Promise<void> | null = null;
+
+/** Load Adcash's official shared library once. Zone IDs are data, never executable HTML. */
+function ensureAdcashLibrary(): Promise<void> {
+  if (typeof window.aclib?.runBanner === 'function') return Promise.resolve();
+  if (adcashLibraryPromise) return adcashLibraryPromise;
+
+  const promise = new Promise<void>((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>(`script[src="${ADCASH_LIBRARY_SRC}"]`);
+    const script = existing ?? document.createElement('script');
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      if (ok) resolve();
+      else reject(new Error('Adcash library failed to load or did not expose aclib.runBanner'));
+    };
+    const timer = window.setTimeout(() => finish(false), 10000);
+    script.addEventListener('load', () => {
+      script.dataset.rnAdcashLoaded = 'true';
+      finish(typeof window.aclib?.runBanner === 'function');
+    }, { once: true });
+    script.addEventListener('error', () => finish(false), { once: true });
+
+    if (!existing) {
+      script.async = true;
+      script.src = ADCASH_LIBRARY_SRC;
+      script.dataset.rnAdcashLibrary = 'true';
+      document.head.appendChild(script);
+    } else if (script.dataset.rnAdcashLoaded === 'true') {
+      finish(typeof window.aclib?.runBanner === 'function');
+    }
+  });
+
+  adcashLibraryPromise = promise.catch(error => {
+    adcashLibraryPromise = null;
+    throw error;
+  });
+  return adcashLibraryPromise;
+}
+
+/** Dedicated Adcash Display adapter: one shared library, one validated zone per container. */
+export function mountAdcashBanner(
+  host: HTMLElement,
+  id: string,
+  zoneId: string,
+  renderIn: string,
+  signal: AbortSignal,
+  beforeRun: () => void,
+  onFailure?: (reason: DirectFailure) => void,
+): Promise<boolean> {
+  const run = async () => {
+    const fail = (reason: DirectFailure) => { onFailure?.(reason); return false; };
+    if (signal.aborted || !host.isConnected) return fail('cancelled');
+    if (!/^\d{1,20}$/.test(zoneId) || !renderIn.startsWith('#')) return fail('invalid-tag');
+    if (loaded.has(id) || [...document.querySelectorAll<HTMLElement>('[data-rn-adcash-zone]')].some(el => el.dataset.rnAdcashZone === zoneId)) {
+      return fail('duplicate');
+    }
+
+    try {
+      await ensureAdcashLibrary();
+    } catch {
+      return fail('library-error');
+    }
+    if (signal.aborted || !host.isConnected) return fail('cancelled');
+    if (typeof window.aclib?.runBanner !== 'function') return fail('library-error');
+
+    host.dataset.rnAdcashZone = zoneId;
+    loaded.set(id, `adcash:${zoneId}`);
+    beforeRun();
+    try {
+      window.aclib.runBanner({ zoneId, renderIn });
+    } catch {
+      loaded.delete(id);
+      delete host.dataset.rnAdcashZone;
+      return fail('zone-error');
+    }
+    return true;
+  };
+
+  const result = queue.then(run, run);
+  queue = result.catch(() => false);
+  return result.catch(() => { onFailure?.('zone-error'); return false; });
 }
 
 export function hasVisibleCreative(host: HTMLElement): boolean {

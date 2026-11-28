@@ -320,6 +320,81 @@ public class RateLimitTests(RateLimitedApiFactory factory) : IClassFixture<RateL
 public class AdsProviderTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     [Fact]
+    public async Task Adcash_display_requires_a_numeric_zone_and_both_approval_switches()
+    {
+        var s = new Scenario(factory);
+        var admin = await s.AdminAsync();
+        var anon = s.Anonymous();
+
+        var invalidZone = new
+        {
+            enabled = true,
+            providerEnabled = new Dictionary<string, bool> { ["adcash"] = true },
+            allowDirectScripts = true,
+            units = new object[]
+            {
+                new { id = "adcash-display", name = "Adcash Display", enabled = true, format = "banner", provider = "adcash", placementId = "dngpgvphye", slots = new[] { "reader_bottom" }, width = 300, height = 250, scriptApproved = true }
+            }
+        };
+        Assert.Equal("validation_failed", await admin.ProblemAsync(HttpMethod.Put, "/api/admin/ads", invalidZone, HttpStatusCode.BadRequest));
+
+        var unapproved = new
+        {
+            enabled = true,
+            providerEnabled = new Dictionary<string, bool> { ["adcash"] = true },
+            allowDirectScripts = true,
+            units = new object[]
+            {
+                new { id = "adcash-display", name = "Adcash Display", enabled = true, format = "banner", provider = "adcash", placementId = "12501966", slots = new[] { "reader_bottom" }, width = 300, height = 250, scriptApproved = false }
+            }
+        };
+        await admin.PutAsync("/api/admin/ads", unapproved);
+        Assert.Empty((await anon.GetAsync("/api/site")).GetProperty("ads").GetProperty("units").EnumerateArray());
+
+        var approvedButGlobalOff = new
+        {
+            enabled = true,
+            providerEnabled = new Dictionary<string, bool> { ["adcash"] = true },
+            allowDirectScripts = false,
+            units = new object[]
+            {
+                new { id = "adcash-display", name = "Adcash Display", enabled = true, format = "banner", provider = "adcash", placementId = "12501966", slots = new[] { "reader_bottom" }, width = 300, height = 250, scriptApproved = true }
+            }
+        };
+        await admin.PutAsync("/api/admin/ads", approvedButGlobalOff);
+        Assert.Empty((await anon.GetAsync("/api/site")).GetProperty("ads").GetProperty("units").EnumerateArray());
+
+        var approved = new
+        {
+            enabled = true,
+            providerEnabled = new Dictionary<string, bool> { ["adcash"] = true },
+            allowDirectScripts = true,
+            units = new object[]
+            {
+                new { id = "adcash-display", name = "Adcash Display", enabled = true, format = "banner", provider = "adcash", placementId = "12501966", slots = new[] { "reader_bottom" }, width = 300, height = 250, scriptApproved = true }
+            }
+        };
+        await admin.PutAsync("/api/admin/ads", approved);
+        var publicUnits = (await anon.GetAsync("/api/site")).GetProperty("ads").GetProperty("units");
+        Assert.Single(publicUnits.EnumerateArray());
+        Assert.Equal("adcash", publicUnits[0].Str("provider"));
+        Assert.Equal("12501966", publicUnits[0].Str("placementId"));
+
+        var providerDisabled = new
+        {
+            enabled = true,
+            providerEnabled = new Dictionary<string, bool> { ["adcash"] = false },
+            allowDirectScripts = true,
+            units = new object[]
+            {
+                new { id = "adcash-display", name = "Adcash Display", enabled = true, format = "banner", provider = "adcash", placementId = "12501966", slots = new[] { "reader_bottom" }, width = 300, height = 250, scriptApproved = true }
+            }
+        };
+        await admin.PutAsync("/api/admin/ads", providerDisabled);
+        Assert.Empty((await anon.GetAsync("/api/site")).GetProperty("ads").GetProperty("units").EnumerateArray());
+    }
+
+    [Fact]
     public async Task Provider_switches_and_script_approval_filter_public_ads_and_reports_stay_private()
     {
         var s = new Scenario(factory);
@@ -336,13 +411,15 @@ public class AdsProviderTests(ApiFactory factory) : IClassFixture<ApiFactory>
                 new { id = "direct", name = "Direct", enabled = true, format = "banner", provider = "direct", imageUrl = "https://example.com/ad.png", targetUrl = "https://example.com", slots = new[] { "side_left" }, width = 160, height = 600, device = "desktop", weight = 5, placementId = "example" },
                 new { id = "disabled", name = "Disabled", enabled = true, format = "banner", provider = "adsterra", html = "<div>Ad</div>", slots = new[] { "home_top" } },
                 new { id = "script", name = "Script", enabled = true, format = "script", provider = "custom", html = "<script>void 0</script>", scriptApproved = true },
-                new { id = "direct-banner", name = "Approved banner", enabled = true, format = "banner", provider = "custom", html = "<script src=\"https://example.com/ad.js\"></script>", slots = new[] { "home_middle" }, scriptApproved = true }
+                new { id = "direct-banner", name = "Approved banner", enabled = true, format = "banner", provider = "custom", html = "<script src=\"https://example.com/ad.js\"></script>", slots = new[] { "home_middle" }, scriptApproved = true },
+                new { id = "adcash-display", name = "Adcash Display", enabled = true, format = "banner", provider = "adcash", placementId = "12501966", slots = new[] { "reader_bottom" }, width = 300, height = 250, scriptApproved = true }
             }
         };
         var saved = await admin.PutAsync("/api/admin/ads", config);
         Assert.Equal(2, saved.Int("schemaVersion"));
         Assert.Single(saved.GetProperty("reports").EnumerateArray());
         Assert.True(saved.GetProperty("units")[3].GetProperty("scriptApproved").GetBoolean());
+        Assert.True(saved.GetProperty("units")[4].GetProperty("scriptApproved").GetBoolean());
         var site = (await anon.GetAsync("/api/site")).GetProperty("ads");
         Assert.Single(site.GetProperty("units").EnumerateArray());
         Assert.Equal("direct", site.GetProperty("units")[0].Str("id"));

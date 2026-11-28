@@ -181,7 +181,7 @@ export type AdFormat = 'banner' | 'popup' | 'newtab' | 'script';
 export type AdSlot = 'site_top' | 'site_bottom' | 'home_top' | 'home_middle' | 'browse_top' | 'comic_top' | 'comic_chapters' | 'house_top' | 'reader_top' | 'reader_bottom' | 'home_extra' | 'side_left' | 'side_right';
 export type AdPage = 'home' | 'browse' | 'comic' | 'reader' | 'house' | 'library' | 'other';
 
-export type AdProvider = 'direct' | 'custom' | 'adsense' | 'adsterra' | 'hilltopads' | 'clickadu' | 'monetag' | 'exoclick' | 'other';
+export type AdProvider = 'direct' | 'custom' | 'adsense' | 'adsterra' | 'hilltopads' | 'clickadu' | 'monetag' | 'exoclick' | 'adcash' | 'other';
 export interface AdProviderReport { provider: AdProvider; month: string; currency: string; impressions: number; revenue: number }
 
 export interface AdUnit {
