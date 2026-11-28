@@ -13,7 +13,7 @@ describe('isolated ad document', () => {
     expect(csp).not.toContain('allow-same-origin');
     expect(csp).not.toContain('allow-top-navigation');
     expect(response.headers.get('X-Frame-Options')).toBe('SAMEORIGIN');
-    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(response.headers.get('Cache-Control')).toBe('no-store, no-transform');
     expect(response.headers.get('X-Robots-Tag')).toContain('noindex');
     expect(await response.text()).toBe(AD_FRAME_HTML);
     expect(AD_FRAME_HTML).toContain('event.source !== parent || event.origin !== origin');

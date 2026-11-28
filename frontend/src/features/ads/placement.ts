@@ -38,8 +38,8 @@ export function isPublicContentClick(target:Element):boolean {
   const anchor=target.closest('a[href]');
   if(anchor){
     const href=anchor.getAttribute('href')??'';
-    return /^(\/(?:truyen|doc|the-loai|nhom-dich)(?:\/|[?#]|$)|\/(?:[?#].*)?)$/.test(href)
-      || /^\/(?:truyen|doc|the-loai|nhom-dich)\/[^/]/.test(href);
+    if(anchor.hasAttribute('download')||anchor.getAttribute('target')==='_blank')return false;
+    return /^\/(?:truyen|doc|the-loai|nhom-dich)(?:\/|[?#]|$)/.test(href)||/^\/(?:[?#].*)?$/.test(href);
   }
   return target.closest('[data-ad-trigger]')!==null;
 }
