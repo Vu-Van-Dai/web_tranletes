@@ -25,7 +25,55 @@ export function standaloneLink(html:string|null):{href:string;label:string}|null
   if([...a.attributes].some(x=>!['href','target','rel','title','class'].includes(x.name)))return null;
   return {href:a.href,label:a.textContent?.trim()||'Xem quảng cáo'};
 }
-type State='loading'|'element'|'no-element'|'script-error'|'injected';
+export type AdDiagnosticState='loading'|'element'|'no-element'|'script-error'|'injected'|'invalid-tag'|'duplicate'|'sync-limit'|'fallback';
+type State=AdDiagnosticState;
+export const diagnosticLabel:Record<State,string> = {
+  loading:'Đang nạp',element:'Có phần tử quảng cáo (chưa xác nhận impression)', 'no-element':'Không phát hiện nội dung', 'script-error':'Lỗi tải script',injected:'Đã nạp mã mạng', 'invalid-tag':'Tag không tương thích',duplicate:'Trùng mã hoặc container', 'sync-limit':'Đã có banner đồng bộ trong tài liệu',fallback:'Đang dùng ảnh dự phòng'
+};
+/** Single external script from the provider; preserve all supplied attributes. */
+export function singleNetworkScript(html:string|null):HTMLScriptElement|null {
+  if(!html)return null;
+  const t=document.createElement('template');t.innerHTML=html.trim();
+  const node=t.content.firstElementChild;
+  if(t.content.childNodes.length!==1||!(node instanceof HTMLScriptElement)||node.text.trim()||!/^https:\/\//i.test(node.getAttribute('src')??''))return null;
+  try{const url=new URL(node.getAttribute('src')!);if(url.username||url.password||url.protocol!=='https:')return null;}catch{return null;}
+  return node;
+}
+export function adsterraScriptPosition(u:AdUnit): 'head'|'body'|null {
+  if(u.provider!=='adsterra'||u.format!=='script')return null;
+  const script=singleNetworkScript(u.html);
+  if(!script)return null;
+  const url=new URL(script.getAttribute('src')!);
+  // The two official tag families supplied by the publisher, without hardcoding account keys.
+  if(url.hostname==='abscloud.org'&&/^\/1\/[a-f0-9]{32}$/i.test(url.pathname))return 'head';
+  if(url.hostname==='bauval.org'&&/^\/14\/[a-f0-9]{32}$/i.test(url.pathname))return 'body';
+  // Provider domains may change; use the explicit configured name for other single-script tags.
+  if(/popunder/i.test(u.name))return 'head';
+  if(/social\s*bar/i.test(u.name))return 'body';
+  return null;
+}
+export function adKind(u:AdUnit): 'popunder'|'socialbar'|'smartlink'|'other' {
+  if(u.provider!=='adsterra')return 'other';
+  const position=adsterraScriptPosition(u);
+  if(position==='head')return 'popunder';
+  if(position==='body')return 'socialbar';
+  if(/popunder/i.test(u.name))return 'popunder';
+  if(/social\s*bar/i.test(u.name))return 'socialbar';
+  if(/smartlink/i.test(u.name))return 'smartlink';
+  return 'other';
+}
+// Draft only: don't approve or enable a third-party script automatically.
+export function suggestedPopunderTest(u:AdUnit):AdUnit {
+  const kind=adKind(u);
+  if(kind==='smartlink'||kind==='socialbar')return {...u,enabled:false};
+  if(kind==='popunder'&&u.format==='script')return {...u,pages:['home','comic','reader'],delaySeconds:0,frequencyMinutes:30};
+  return u;
+}
+// A fallback must already be configured in this slot and be a direct image creative,
+// not another paid network request. Never retry a failed script to generate impressions.
+export function imageFallback(units:AdUnit[],failedId:string,seed:number):AdUnit|undefined {
+  return weightedPick(units.filter(u=>u.id!==failedId&&u.provider==='direct'&&!!u.imageUrl&&!!u.targetUrl&&!u.html),seed);
+}
 export type AdDiagnostic={state:State;at:number;slot:string};
 const KEY='rn_ad_diagnostics_v1';
 export function readDiagnostics():Record<string,AdDiagnostic>{

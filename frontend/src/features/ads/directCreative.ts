@@ -5,6 +5,7 @@ const sources = new Set<string>();
 let queue: Promise<unknown> = Promise.resolve();
 let syncBannerStarted = false;
 export const loadedDirectBanners = () => [...loaded.entries()];
+export type DirectFailure = 'invalid-tag' | 'duplicate' | 'sync-limit' | 'script-error' | 'cancelled';
 
 export function parseDirectTag(html: string) {
   const template = document.createElement('template');
@@ -12,20 +13,36 @@ export function parseDirectTag(html: string) {
   const scripts = [...template.content.children].filter((el): el is HTMLScriptElement => el instanceof HTMLScriptElement);
   if (!scripts.length || template.content.querySelectorAll('script').length !== scripts.length) throw Error('Expected top-level provider scripts');
   const external = scripts.filter(s => s.hasAttribute('src'));
-  if (!external.length || external.some(s => !/^https:\/\//i.test(s.getAttribute('src') ?? ''))) throw Error('Expected HTTPS provider script');
-  const urls = external.map(s => new URL(s.getAttribute('src')!).href);
+  if (!external.length || external.some(s => !/^(https:)?\/\//i.test(s.getAttribute('src') ?? ''))) throw Error('Expected HTTPS provider script');
+  const urls = external.map(s => {
+    const url = new URL(s.getAttribute('src')!, 'https://example.invalid');
+    if(url.protocol!=='https:' || url.username || url.password) throw Error('Expected HTTPS provider script');
+    return url.href;
+  });
   if (new Set(urls).size !== urls.length) throw Error('Duplicate provider script');
-  const sync = scripts.some(s => !s.hasAttribute('src')) || external.some(s => !s.hasAttribute('async'));
+  const inline = scripts.filter(s => !s.hasAttribute('src'));
+  // Recognize independent official-style async option queues. Do not convert IFRAME SYNC
+  // into JSAsync or rewrite provider code. Unknown inline configurations stay conservative.
+  const queueOptions = inline.length>0 && inline.every(s => /\batAsyncOptions\s*\.push\s*\(/.test(s.text) && !/\batOptions\b/.test(s.text));
+  const sync = external.some(s => !s.hasAttribute('async')) || (inline.length>0 && !queueOptions);
   return { template, scripts, urls, sync };
 }
 
+export function directTagKind(html: string): 'async' | 'sync' | 'invalid' {
+  try { return parseDirectTag(html).sync ? 'sync' : 'async'; } catch { return 'invalid'; }
+}
+
 /** Mount at most once per unit and script URL in a document. No automatic retries. */
-export function mountDirectBanner(host: HTMLElement, id: string, html: string, signal: AbortSignal, beforeRun: () => void): Promise<boolean> {
+export function mountDirectBanner(host: HTMLElement, id: string, html: string, signal: AbortSignal, beforeRun: () => void, onFailure?: (reason:DirectFailure)=>void): Promise<boolean> {
   const run = async () => {
-    if (signal.aborted || !host.isConnected || loaded.has(id)) return false;
+    const fail = (reason:DirectFailure) => { onFailure?.(reason); return false; };
+    if (signal.aborted || !host.isConnected) return fail('cancelled');
+    if (loaded.has(id)) return fail('duplicate');
     let tag: ReturnType<typeof parseDirectTag>;
-    try { tag = parseDirectTag(html); } catch { return false; }
-    if (tag.urls.some(url => sources.has(url)) || (tag.sync && syncBannerStarted)) return false;
+    try { tag = parseDirectTag(html); } catch { return fail('invalid-tag'); }
+    const ids = [...tag.template.content.querySelectorAll('[id]')].map(el=>el.id);
+    if (tag.urls.some(url => sources.has(url)) || new Set(ids).size!==ids.length || ids.some(id=>document.getElementById(id))) return fail('duplicate');
+    if (tag.sync && syncBannerStarted) return fail('sync-limit');
     loaded.set(id, html);
     tag.urls.forEach(url => sources.add(url));
     if (tag.sync) syncBannerStarted = true;
@@ -38,11 +55,12 @@ export function mountDirectBanner(host: HTMLElement, id: string, html: string, s
     });
     host.replaceChildren(tag.template.content);
     for (let i = 0; i < tag.scripts.length; i++) {
-      if (signal.aborted || !host.isConnected) return false;
+      if (signal.aborted || !host.isConnected) return fail('cancelled');
       const original = tag.scripts[i]!;
       const marker = positions[i]!;
       const script = document.createElement('script');
       for (const attr of original.attributes) script.setAttribute(attr.name, attr.value);
+      if (original.getAttribute('src')?.startsWith('//')) script.src='https:'+original.getAttribute('src');
       script.text = original.text;
       if (!script.src) {
         marker.replaceWith(script);
@@ -65,13 +83,13 @@ export function mountDirectBanner(host: HTMLElement, id: string, html: string, s
         signal.addEventListener('abort', abort, {once:true});
         marker.replaceWith(script);
       });
-      if (!ok) return false;
+      if (!ok) return fail(signal.aborted?'cancelled':'script-error');
     }
     return !signal.aborted;
   };
   const result = queue.then(run, run);
   queue = result.catch(() => false);
-  return result.catch(() => false);
+  return result.catch(() => {onFailure?.('script-error');return false;});
 }
 
 export function hasVisibleCreative(host: HTMLElement): boolean {

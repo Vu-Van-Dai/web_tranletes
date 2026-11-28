@@ -124,3 +124,51 @@ describe('responsive ad slots',()=>{
     expect(standaloneLink('<a href="https://example.com" onclick="alert(1)">Ad</a>')).toBeNull();
   });
 });
+
+import { directTagKind } from '@/features/ads/directCreative';
+import { adKind, suggestedPopunderTest, imageFallback } from '@/features/ads/placement';
+describe('network ad compatibility',()=>{
+  it('allows independent async option queues while keeping sync/global configs conservative',()=>{
+    expect(directTagKind('<script>atAsyncOptions.push({key:"a"})</script><script async src="//example.com/a.js"></script><div id="a"></div>')).toBe('async');
+    expect(directTagKind('<script>atOptions={}</script><script async src="https://example.com/a.js"></script>')).toBe('sync');
+    expect(directTagKind('<script src="http://example.com/a.js"></script>')).toBe('invalid');
+  });
+  it('prepares a popunder test without approving or enabling code',()=>{
+    const pop={id:'pop',name:'Adsterra - Popunder',provider:'adsterra',format:'script',enabled:false,scriptApproved:false} as AdUnit;
+    expect(adKind(pop)).toBe('popunder');
+    expect(suggestedPopunderTest(pop)).toMatchObject({enabled:false,scriptApproved:false,pages:['home','comic','reader'],frequencyMinutes:30});
+    expect(suggestedPopunderTest({...pop,name:'Adsterra - Smartlink',format:'banner',enabled:true}).enabled).toBe(false);
+  });
+  it('does not request another paid network as a fallback',()=>{
+    const ad={id:'first',provider:'adsterra',html:'<script></script>'} as AdUnit;
+    const own={id:'own',provider:'direct',imageUrl:'https://example.com/a.webp',targetUrl:'https://example.com',html:null} as AdUnit;
+    expect(imageFallback([ad],ad.id,0)).toBeUndefined();
+    expect(imageFallback([ad,own],ad.id,0)?.id).toBe('own');
+  });
+});
+
+import { singleNetworkScript, adsterraScriptPosition } from '@/features/ads/placement';
+describe('Adsterra publisher tag placement',()=>{
+  const tag=(src:string)=>'<script data-cfasync="false" src="'+src+'"></script>';
+  const script={id:'example',name:'Network',provider:'adsterra',format:'script',enabled:true} as AdUnit;
+  it('routes the supplied tag families to their documented positions without executing them',()=>{
+    const pop={...script,html:tag('https://abscloud.org/1/'+'a'.repeat(32))};
+    const social={...script,html:tag('https://bauval.org/14/'+'b'.repeat(32))};
+    expect(adsterraScriptPosition(pop)).toBe('head');
+    expect(adsterraScriptPosition(social)).toBe('body');
+    expect(adKind(pop)).toBe('popunder');
+    expect(adKind(social)).toBe('socialbar');
+    expect(singleNetworkScript(pop.html)?.getAttribute('data-cfasync')).toBe('false');
+    expect(adsterraScriptPosition({...pop,provider:'custom'})).toBeNull();
+    expect(adsterraScriptPosition({...pop,html:pop.html+'<div></div>'})).toBeNull();
+    expect(singleNetworkScript('<script>alert(1)</script>')).toBeNull();
+    expect(singleNetworkScript(tag('http://example.com/ad.js'))).toBeNull();
+  });
+  it('classifies all six fixed banner shapes as sync, regardless of key or size',()=>{
+    for(const [width,height] of [[468,60],[300,250],[160,600],[160,300],[320,50],[728,90]]){
+      const html='<script>atOptions={key:"example",format:"iframe",height:'+height+',width:'+width+',params:{}}</script><script data-cfasync="false" src="https://bauval.org/22/example"></script>';
+      expect(directTagKind(html)).toBe('sync');
+      expect(dimensions({...script,format:'banner',html})).toEqual({width,height});
+    }
+  });
+});

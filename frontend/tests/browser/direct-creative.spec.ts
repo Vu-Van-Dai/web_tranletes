@@ -31,3 +31,23 @@ test('direct native tag can read its page cookie, sees its container, and does n
   await expect(page.locator('body')).toHaveAttribute('data-eval','blocked');
   expect(calls).toBe(1);
 });
+
+test('independent async queues load distinct tags without weakening CSP', async ({page})=>{
+  await page.route('https://site.example/**', route=>route.request().url().endsWith('/loader.js')?route.fulfill({contentType:'application/javascript',body:loader}):route.fulfill({contentType:'text/html',headers:{'Content-Security-Policy':"default-src 'self'; script-src 'self' 'unsafe-inline' https:"},body:'<!doctype html><body><div id="one"></div><div id="two"></div><div id="three"></div></body>'}));
+  await page.route('https://provider.example/**',route=>route.fulfill({contentType:'application/javascript',body:'(function(){const opt=window.atAsyncOptions.shift();document.getElementById(opt.container).textContent=opt.key;})();'}));
+  await page.goto('https://site.example/');
+  const result=await page.evaluate(async()=>{
+    const path='/loader.js';
+    const {mountDirectBanner}=await import(path);
+    const html=(key:string)=>'<script>window.atAsyncOptions=window.atAsyncOptions||[];atAsyncOptions.push({key:"'+key+'",container:"ad-'+key+'"})</script><script async src="https://provider.example/'+key+'.js"></script><div id="ad-'+key+'"></div>';
+    const sig=new AbortController().signal;
+    const first=await mountDirectBanner(document.querySelector('#one'),'one',html('a'),sig,()=>{});
+    const second=await mountDirectBanner(document.querySelector('#two'),'two',html('b'),sig,()=>{});
+    let reason='';
+    const duplicate=await mountDirectBanner(document.querySelector('#three'),'three',html('a'),sig,()=>{},(r:string)=>{reason=r;});
+    return {first,second,duplicate,reason};
+  });
+  expect(result).toEqual({first:true,second:true,duplicate:false,reason:'duplicate'});
+  await expect(page.locator('#ad-a')).toHaveText('a');
+  await expect(page.locator('#ad-b')).toHaveText('b');
+});

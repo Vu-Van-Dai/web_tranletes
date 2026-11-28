@@ -8,7 +8,8 @@ import { ApiError } from '@/services/http';
 import type { AdFormat, AdPage, AdSlot, AdUnit, AdsConfig, AdProvider, AdProviderReport } from '@/types/api';
 
 import { providerLabels, providerOf } from '@/features/ads/providers';
-import { dimensions, readDiagnostics, suggestedAdsterraLayout } from '@/features/ads/placement';
+import { dimensions, readDiagnostics, suggestedAdsterraLayout, adKind, suggestedPopunderTest, diagnosticLabel, adsterraScriptPosition } from '@/features/ads/placement';
+import { directTagKind } from '@/features/ads/directCreative';
 
 const formatLabel: Record<AdFormat, string> = {
   banner: 'Banner trong trang',
@@ -134,9 +135,10 @@ export function AdminAdsPage() {
           {config.schemaVersion === 2 ? <ProviderSettings config={config} update={update} /> : <p className="card p-4 text-sm text-muted">Quản lý theo nhà cung cấp sẽ khả dụng sau khi backend được cập nhật.</p>}
           <section className="card space-y-2 p-4">
             <h2 className="font-semibold">Bố cục và chẩn đoán</h2>
-            <p className="text-sm text-muted">Sắp xếp Adsterra theo kích thước tag, giữ trạng thái bật và phê duyệt. Kiểm tra lại rồi lưu. Chẩn đoán chỉ của trình duyệt hiện tại, không phải lượt hiển thị tính tiền.</p>
+            <p className="text-sm text-muted">Sắp xếp Adsterra theo kích thước tag, giữ trạng thái bật và phê duyệt. Kiểm tra lại rồi lưu. Chuẩn bị thử Popunder sẽ tắt Smartlink/Social Bar của Adsterra trong bản nháp, không tự bật hoặc phê duyệt Popunder. Chẩn đoán chỉ của trình duyệt hiện tại, không phải lượt hiển thị tính tiền.</p>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={()=>update({...config,units:config.units.map(suggestedAdsterraLayout)})}>Sắp xếp Adsterra theo kích thước</Button>
+              <Button variant="outline" onClick={()=>update({...config,units:config.units.map(suggestedPopunderTest)})}>Chuẩn bị thử Popunder</Button>
               <Button variant="outline" onClick={()=>setDiagnostics(readDiagnostics())}>Đọc lại chẩn đoán cục bộ</Button>
             </div>
           </section>
@@ -148,9 +150,9 @@ export function AdminAdsPage() {
                 <li key={u.id} className="card flex flex-wrap items-center gap-3 p-4">
                   {u.imageUrl ? <img src={u.imageUrl} alt="" className="h-12 w-20 shrink-0 rounded-lg object-cover" /> : <span className="grid h-12 w-20 shrink-0 place-items-center rounded-lg bg-surface-2 text-xs text-muted">{u.html ? 'HTML' : '—'}</span>}
                   <div className="min-w-0 flex-1">
-                    <p className="flex flex-wrap items-center gap-2 font-medium">{u.name}<Badge tone="accent">{formatLabel[u.format]}</Badge><Badge>{providerLabels[providerOf(u)]}</Badge>{u.format === 'banner' && u.scriptApproved && <Badge>Script trực tiếp</Badge>}{!u.enabled && <Badge>Đang tắt</Badge>}</p>
+                    <p className="flex flex-wrap items-center gap-2 font-medium">{u.name}<Badge tone="accent">{formatLabel[u.format]}</Badge><Badge>{providerLabels[providerOf(u)]}</Badge>{u.format === 'banner' && u.scriptApproved && <Badge>Script trực tiếp</Badge>}{adKind(u)!=='other'&&<Badge>{adKind(u)==='popunder'?'Popunder':adKind(u)==='socialbar'?'Social Bar':'Smartlink'}</Badge>}{u.format==='banner'&&u.html&&/<script\b/i.test(u.html)&&<Badge>{directTagKind(u.html)==='async'?'Async':directTagKind(u.html)==='sync'?'Sync (tối đa 1 trực tiếp)':'Tag chưa tương thích'}</Badge>}{!u.enabled && <Badge>Đang tắt</Badge>}</p>
                     <p className="text-xs text-muted">{describe(u)} · {u.device??'all'} · {dimensions(u)?dimensions(u)!.width+'×'+dimensions(u)!.height:'tự thích ứng'} · trọng số {u.weight??1}{u.placementId?' · ID '+u.placementId:''}</p>
-                    {diagnostics[u.id] && <p className="text-xs text-muted">Chẩn đoán cục bộ: {diagnostics[u.id]!.state} · {new Date(diagnostics[u.id]!.at).toLocaleString('vi-VN')}</p>}
+                    {diagnostics[u.id] && <p className="text-xs text-muted">Chẩn đoán cục bộ: {diagnosticLabel[diagnostics[u.id]!.state]??diagnostics[u.id]!.state} · {new Date(diagnostics[u.id]!.at).toLocaleString('vi-VN')}</p>}
                   </div>
                   <Checkbox label="Bật" checked={u.enabled} onChange={(e) => upsert({ ...u, enabled: e.target.checked })} />
                   <Button variant="ghost" size="icon" aria-label={`Sửa ${u.name}`} onClick={() => setEditing(u)}><Pencil className="h-4 w-4" /></Button>
@@ -262,6 +264,13 @@ function AdEditor({ unit, providerSettings, onCancel, onSave }: { unit: AdUnit; 
           </div>
         )}
 
+        {u.format==='banner'&&creative==='html'&&u.html&&/<script\b/i.test(u.html)&&(
+          <p className="rounded-xl bg-surface-2 p-3 text-sm text-muted">
+            {directTagKind(u.html)==='async'?'Tag bất đồng bộ: có thể cùng tồn tại với các tag độc lập khác.':directTagKind(u.html)==='sync'?'Tag đồng bộ: chỉ một banner trực tiếp mỗi tài liệu. Yêu cầu mã JSAsync chính thức nếu cần nhiều banner.':'Tag chưa tương thích với trình nạp trực tiếp.'}
+            {!u.scriptApproved?' Đang chọn iframe cách ly; một số nhà cung cấp yêu cầu cookie nên có thể không hiển thị.':''}
+          </p>
+        )}
+        {u.format==='newtab'&&u.provider==='adsterra'&&<p className="rounded-xl bg-surface-2 p-3 text-sm text-muted">Adsterra khuyến cáo không gắn Smartlink vào nút điều hướng. Dùng Popunder chính thức cho hành vi mở tab và Smartlink trên nút quảng cáo được ghi nhãn.</p>}
         {providerSettings && u.format === 'banner' && creative === 'html' && (
           <Checkbox label="Chạy trực tiếp mã banner (không dùng iframe của Rồng Nhỏ)"
             description="Chỉ dùng mã chính thức đã kiểm tra và danh mục quảng cáo hợp pháp. Script có quyền của trang web; chỉ chạy với khách chưa đăng nhập, cần bật quyền script toàn hệ thống. Bỏ chọn để quay về iframe cách ly. Ưu tiên mã JSAsync; mỗi trang chỉ thử một banner đồng bộ."
@@ -281,6 +290,7 @@ function AdEditor({ unit, providerSettings, onCancel, onSave }: { unit: AdUnit; 
             </Field>
           </div>
         )}
+        {u.format==='script'&&u.provider==='adsterra'&&adsterraScriptPosition(u)&&<p className="rounded-xl bg-surface-2 p-3 text-sm text-muted">{adsterraScriptPosition(u)==='head'?'Popunder: nạp script cuối head.':'Social Bar: nạp script cuối body.'} Mã được nạp động sau khi kiểm tra quyền và điều kiện hiển thị.</p>}
         {u.format === 'script' && (
           <Field label="Mã của mạng quảng cáo" required hint="Dán nguyên văn, kể cả thẻ <script>.">
             {(id) => <Textarea id={id} rows={6} className="font-mono text-xs" value={u.html ?? ''} onChange={(e) => set({ html: e.target.value || null, scriptApproved: false })} data-testid="ad-script" />}
@@ -334,7 +344,7 @@ function AdEditor({ unit, providerSettings, onCancel, onSave }: { unit: AdUnit; 
         {u.format !== 'banner' && (
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Hiện sau (giây)">{(id) => <Input id={id} type="number" min={0} max={300} value={u.delaySeconds ?? 0} onChange={(e) => set({ delaySeconds: Number(e.target.value) })} />}</Field>
-            <Field label="Tần suất tối đa (phút)" hint="0 = mỗi lần mở trang. Với mã mạng, giới hạn lần nạp script, không kiểm soát popup do nhà cung cấp tạo.">
+            <Field label="Tần suất tối đa (phút)" hint="0 = mỗi lần mở trang. Với mã mạng, thời gian chờ dùng chung giữa các mã, tối thiểu 1 phút; không kiểm soát popup do nhà cung cấp tạo.">
               {(id) => <Input id={id} type="number" min={0} max={10080} value={u.frequencyMinutes ?? 0} onChange={(e) => set({ frequencyMinutes: Number(e.target.value) })} />}
             </Field>
           </div>
