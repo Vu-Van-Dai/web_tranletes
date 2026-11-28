@@ -1,7 +1,7 @@
-import { isAllowedAdUnit, isDirectBanner, requiresDirectScript } from '@/features/ads/providers';
-import { parseDirectTag } from '@/features/ads/directCreative';
+import { isAdcashBanner, isAllowedAdUnit, isDirectBanner, requiresDirectScript } from '@/features/ads/providers';
+import { mountAdcashBanner, parseDirectTag } from '@/features/ads/directCreative';
 import type { AdUnit } from '@/types/api';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AD_TRIGGER_SELECTOR, isAdFreePath, pageGroupOf } from '@/features/ads/Ads';
 import { comicLink, chapterLink, chapterRoute } from '@/app/paths';
 import { chapterNumberFromName } from '@/features/house/BulkUploadDialog';
@@ -103,7 +103,64 @@ describe('approved direct banners', () => {
   });
 });
 
-import { dimensions, fitsSlot, weightedPick, standaloneLink, suggestedAdsterraLayout } from '@/features/ads/placement';
+import { assignedBannerSlot, dimensions, fitsSlot, isVisualBanner, planBanners, weightedPick, standaloneLink, suggestedAdsterraLayout } from '@/features/ads/placement';
+describe('Adcash Display zones', () => {
+  const banner = {
+    id: 'adcash-display-test', name: 'Adcash Display', provider: 'adcash', format: 'banner',
+    enabled: true, scriptApproved: true, placementId: '12501966',
+    width: 300, height: 250, slots: ['reader_bottom'], html: null, imageUrl: null, targetUrl: null,
+  } as AdUnit;
+
+  it('requires a numeric Zone ID and both direct-script approval gates', () => {
+    expect(isAdcashBanner(banner)).toBe(true);
+    expect(isDirectBanner(banner)).toBe(true);
+    expect(requiresDirectScript(banner)).toBe(true);
+    expect(isAllowedAdUnit({enabled:true,units:[banner]},banner)).toBe(false);
+    expect(isAllowedAdUnit({enabled:true,units:[banner],allowDirectScripts:true},banner)).toBe(true);
+    expect(isAllowedAdUnit({enabled:true,units:[banner],allowDirectScripts:true,providerEnabled:{adcash:false}},banner)).toBe(false);
+    const malformed = {...banner, placementId:'dngpgvphye'};
+    expect(isAdcashBanner(malformed)).toBe(false);
+    expect(isAllowedAdUnit({enabled:true,units:[malformed],allowDirectScripts:true},malformed)).toBe(false);
+  });
+
+  it('allocates the Display zone to its configured reader slot without parsing HTML', () => {
+    expect(isVisualBanner(banner)).toBe(true);
+    expect(assignedBannerSlot(banner,'reader')).toBe('reader_bottom');
+    const plan = planBanners([banner],'reader',1280,0);
+    expect(plan.reader_bottom?.[0]?.id).toBe(banner.id);
+    expect(plan.reader_top).toBeUndefined();
+  });
+
+  it('calls the official shared aclib API with a scoped render container and rejects duplicate zones', async () => {
+    const host = document.createElement('div');
+    host.id = 'adcash-display-test-container';
+    document.body.appendChild(host);
+    const runBanner = vi.fn();
+    window.aclib = { runBanner };
+    const beforeRun = vi.fn();
+    const onFailure = vi.fn();
+    try {
+      const ok = await mountAdcashBanner(host,'adcash-display-test','987654321','#adcash-display-test-container',
+        new AbortController().signal,beforeRun,onFailure);
+      expect(ok).toBe(true);
+      expect(runBanner).toHaveBeenCalledWith({zoneId:'987654321',renderIn:'#adcash-display-test-container'});
+      expect(beforeRun).toHaveBeenCalledOnce();
+      expect(host.dataset.rnAdcashZone).toBe('987654321');
+
+      const duplicate = document.createElement('div');
+      document.body.appendChild(duplicate);
+      const second = await mountAdcashBanner(duplicate,'adcash-display-test-duplicate','987654321','#duplicate',
+        new AbortController().signal,vi.fn(),onFailure);
+      expect(second).toBe(false);
+      expect(onFailure).toHaveBeenCalledWith('duplicate');
+      duplicate.remove();
+    } finally {
+      host.remove();
+      delete window.aclib;
+    }
+  });
+});
+
 describe('responsive ad slots',()=>{
   const wide={id:'wide',name:'Banner 728x90',format:'banner',provider:'adsterra',enabled:true,scriptApproved:false,html:"<script>atOptions={'width':728,'height':90}</script>",slots:['home_top']} as AdUnit;
   it('reads fixed dimensions and preserves approval while assigning a desktop slot',()=>{
