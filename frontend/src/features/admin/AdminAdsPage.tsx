@@ -8,20 +8,20 @@ import { ApiError } from '@/services/http';
 import type { AdFormat, AdPage, AdSlot, AdUnit, AdsConfig, AdProvider, AdProviderReport } from '@/types/api';
 
 import { providerLabels, providerOf } from '@/features/ads/providers';
-import { dimensions, readDiagnostics, suggestedAdsterraLayout, adKind, suggestedPopunderTest, diagnosticLabel, adsterraScriptPosition, eligibleOnClickLink, isKnownAdsterraTag } from '@/features/ads/placement';
+import { dimensions, readDiagnostics, suggestedAdsterraLayout, adKind, suggestedPopunderTest, diagnosticLabel, adsterraScriptPosition, eligibleOnClickLink, isKnownAdsterraTag, suggestedHilltopLayout } from '@/features/ads/placement';
 import { directTagKind } from '@/features/ads/directCreative';
 
 const formatLabel: Record<AdFormat, string> = {
   banner: 'Banner trong trang',
   popup: 'Pop-up (bảng nổi)',
-  newtab: 'OnClick New Tab (có đồng ý)',
+  newtab: 'OnClick New Tab',
   script: 'Mã của mạng quảng cáo (Popunder / In-Page / MultiTag)',
 };
 
 const formatHint: Record<AdFormat, string> = {
   banner: 'Hiển thị tại các vị trí đã chọn. Dùng ảnh + liên kết (quảng cáo trực tiếp) hoặc mã HTML banner của mạng quảng cáo.',
   popup: 'Bảng nổi che trang. Có thể cho đóng ngay, hoặc bắt buộc xem đủ số giây mới hiện nút đóng.',
-  newtab: 'Dùng Popunder Direct URL chính thức của HilltopAds hoặc liên kết tài trợ trực tiếp. Chỉ mở khi khách đồng ý và bấm điều hướng nội dung công khai; không dùng Smartlink Adsterra.' ,
+  newtab: 'Dùng Popunder Direct URL chính thức của HilltopAds hoặc liên kết tài trợ trực tiếp. Mặc định bật với thông báo và tùy chọn tắt; chỉ mở khi khách bấm điều hướng nội dung công khai; không dùng Smartlink Adsterra.' ,
   script: 'Dán nguyên mã của mạng quảng cáo (popunder, social bar, auto ads…). Mã chạy trực tiếp trên trang công khai — chỉ dán mã từ nguồn tin cậy.',
 };
 
@@ -135,10 +135,11 @@ export function AdminAdsPage() {
           {config.schemaVersion === 2 ? <ProviderSettings config={config} update={update} /> : <p className="card p-4 text-sm text-muted">Quản lý theo nhà cung cấp sẽ khả dụng sau khi backend được cập nhật.</p>}
           <section className="card space-y-2 p-4">
             <h2 className="font-semibold">Bố cục và chẩn đoán</h2>
-            <p className="text-sm text-muted">Sắp xếp Adsterra theo kích thước tag, giữ trạng thái bật và phê duyệt. Kiểm tra lại rồi lưu. Chuẩn bị thử Popunder sẽ tắt Smartlink và Social Bar/In-Page được nhận diện trong bản nháp, không tự bật hoặc phê duyệt Popunder. Chẩn đoán chỉ của trình duyệt hiện tại, không phải lượt hiển thị tính tiền.</p>
+            <p className="text-sm text-muted">Sắp xếp Adsterra theo kích thước tag, giữ trạng thái bật và phê duyệt. Kiểm tra lại rồi lưu. Chuẩn bị thử Popunder sẽ tắt Smartlink và Social Bar/In-Page được nhận diện trong bản nháp, không tự bật hoặc phê duyệt Popunder. Bố trí HilltopAds + Adsterra đặt banner Hilltop ở đầu, Native ở giữa, tắt Smartlink và các script popup cạnh tranh, giữ trạng thái bật/phê duyệt của banner và Direct URL. OnClick dùng giới hạn chung 2 phút. Chẩn đoán chỉ của trình duyệt hiện tại, không phải lượt hiển thị tính tiền.</p>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={()=>update({...config,units:config.units.map(suggestedAdsterraLayout)})}>Sắp xếp Adsterra theo kích thước</Button>
               <Button variant="outline" onClick={()=>update({...config,units:config.units.map(suggestedPopunderTest)})}>Chuẩn bị thử Popunder</Button>
+              <Button variant="outline" onClick={()=>update({...config,units:config.units.map(suggestedHilltopLayout)})}>Bố trí HilltopAds + Adsterra (2 phút)</Button>
               <Button variant="outline" onClick={()=>setDiagnostics(readDiagnostics())}>Đọc lại chẩn đoán cục bộ</Button>
             </div>
           </section>
@@ -284,7 +285,7 @@ function AdEditor({ unit, providerSettings, onCancel, onSave }: { unit: AdUnit; 
         {u.format === 'newtab' && (
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Liên kết mở trong tab mới" required>{(id) => <Input id={id} placeholder="https://" value={u.targetUrl ?? ''} onChange={(e) => set({ targetUrl: e.target.value || null })} />}</Field>
-            <p className="text-sm text-muted">Kích hoạt khi khách đồng ý và bấm truyện, chương, logo, danh sách, thể loại hoặc nhóm dịch công khai. Không bắt click nhập liệu, tài khoản hay quản trị.</p>
+            <p className="text-sm text-muted">Kích hoạt khi khách bấm truyện, chương, logo, danh sách, thể loại hoặc nhóm dịch công khai. Không bắt click nhập liệu, tài khoản hay quản trị.</p>
           </div>
         )}
         {u.format==='script'&&u.provider==='adsterra'&&adsterraScriptPosition(u)&&<p className="rounded-xl bg-surface-2 p-3 text-sm text-muted">{adsterraScriptPosition(u)==='head'?'Popunder: nạp script cuối head.':'Social Bar: nạp script cuối body.'} Mã được nạp động sau khi kiểm tra quyền và điều kiện hiển thị.</p>}
