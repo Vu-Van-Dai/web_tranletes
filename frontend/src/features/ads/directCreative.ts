@@ -7,12 +7,36 @@ let syncBannerStarted = false;
 export const loadedDirectBanners = () => [...loaded.entries()];
 export type DirectFailure = 'invalid-tag' | 'duplicate' | 'sync-limit' | 'script-error' | 'cancelled';
 
-export function parseDirectTag(html: string) {
+// HilltopAds MultiTag supplies an inline bootstrap which creates its own async
+// script. Read the literal URL for duplicate detection, never evaluate the code
+// during parsing. This is compatibility detection, NOT a trust/safety validator.
+function hilltopBootstrapUrl(script: HTMLScriptElement): string | null {
+  const code=script.text;
+  if(script.hasAttribute('src')||!/\bd\.createElement\(\s*['"]script['"]\s*\)/.test(code)||
+      !/\bs\.async\s*=\s*true\s*;/.test(code)||
+      !/\bl\.parentNode\.insertBefore\(\s*s\s*,\s*l\s*\)/.test(code)||
+      !/\bd\.currentScript\b/.test(code))return null;
+  const literals=[...code.matchAll(/\bs\.src\s*=\s*("(?:\\.|[^"\\])*")\s*;/g)];
+  if(literals.length!==1)return null;
+  try{
+    const raw=JSON.parse(literals[0]![1]!) as string;
+    if(!/^(https:)?\/\//i.test(raw))return null;
+    const url=new URL(raw,'https://example.invalid');
+    // Exact observed HilltopAds CDN; other domains need separate review.
+    if(url.protocol!=='https:'||url.hostname!=='same-upstairs.com'||url.username||url.password||url.port||url.pathname==='/')return null;
+    return url.href;
+  }catch{return null;}
+}
+export function parseDirectTag(html: string, provider?: string) {
   const template = document.createElement('template');
   template.innerHTML = html;
   const scripts = [...template.content.children].filter((el): el is HTMLScriptElement => el instanceof HTMLScriptElement);
   if (!scripts.length || template.content.querySelectorAll('script').length !== scripts.length) throw Error('Expected top-level provider scripts');
   const external = scripts.filter(s => s.hasAttribute('src'));
+  if(!external.length&&provider==='hilltopads'&&scripts.length===1&&template.content.children.length===1){
+    const url=hilltopBootstrapUrl(scripts[0]!);
+    if(url)return {template,scripts,urls:[url],sync:false};
+  }
   if (!external.length || external.some(s => !/^(https:)?\/\//i.test(s.getAttribute('src') ?? ''))) throw Error('Expected HTTPS provider script');
   const urls = external.map(s => {
     const url = new URL(s.getAttribute('src')!, 'https://example.invalid');
@@ -28,18 +52,18 @@ export function parseDirectTag(html: string) {
   return { template, scripts, urls, sync };
 }
 
-export function directTagKind(html: string): 'async' | 'sync' | 'invalid' {
-  try { return parseDirectTag(html).sync ? 'sync' : 'async'; } catch { return 'invalid'; }
+export function directTagKind(html: string, provider?: string): 'async' | 'sync' | 'invalid' {
+  try { return parseDirectTag(html,provider).sync ? 'sync' : 'async'; } catch { return 'invalid'; }
 }
 
 /** Mount at most once per unit and script URL in a document. No automatic retries. */
-export function mountDirectBanner(host: HTMLElement, id: string, html: string, signal: AbortSignal, beforeRun: () => void, onFailure?: (reason:DirectFailure)=>void): Promise<boolean> {
+export function mountDirectBanner(host: HTMLElement, id: string, html: string, signal: AbortSignal, beforeRun: () => void, onFailure?: (reason:DirectFailure)=>void, provider?: string): Promise<boolean> {
   const run = async () => {
     const fail = (reason:DirectFailure) => { onFailure?.(reason); return false; };
     if (signal.aborted || !host.isConnected) return fail('cancelled');
     if (loaded.has(id)) return fail('duplicate');
     let tag: ReturnType<typeof parseDirectTag>;
-    try { tag = parseDirectTag(html); } catch { return fail('invalid-tag'); }
+    try { tag = parseDirectTag(html,provider); } catch { return fail('invalid-tag'); }
     const ids = [...tag.template.content.querySelectorAll('[id]')].map(el=>el.id);
     if (tag.urls.some(url => sources.has(url)) || new Set(ids).size!==ids.length || ids.some(id=>document.getElementById(id))) return fail('duplicate');
     if (tag.sync && syncBannerStarted) return fail('sync-limit');
